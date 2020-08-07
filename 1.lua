@@ -34,9 +34,9 @@ end)
 
 n = snapshot.snapshot()
 
-diff = snapshot.snapshot_added(m, n)
-decreased = snapshot.snapshot_decreased(n, m)
+diff = snapshot.added(m, n)
+decreased = snapshot.decreased(n, m)
 snapshot.snapshot_tofile(diff, "1.txt")
 --snapshot.snapshot_tofile(m, "2.txt")
 --snapshot.snapshot_tofile(n, "3.txt")
-snapshot.snapshot_tofile(decreased, "2.txt")
+snapshot.tofile(decreased, "2.txt")
