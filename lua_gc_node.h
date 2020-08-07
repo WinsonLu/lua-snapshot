@@ -6,6 +6,7 @@ extern "C" {
 #include <string.h>
 #include <lua.h>
 #include <lauxlib.h>
+#include "uthash.h"
 #define LUA_GC_NODE_NAME_SIZE 32
 #define LUA_GC_NODE_DESC_SIZE 64
 
@@ -27,7 +28,8 @@ struct lua_gc_node {
 	struct lua_gc_node* next_sibling; 		//兄弟节点
 	struct lua_gc_node* first_child; 		//第一个子节点
 	//unsigned long size;			 		// 该节点所占用内存量，叶子节点是自己节点的内存，非叶子节点是所有子节点的size之和
-	void* lua_obj_ptr; 						//指向lua对象的指针，唯一标识lua对象
+	const void* lua_obj_ptr; 						//指向lua对象的指针，唯一标识lua对象
+	UT_hash_handle hh;
 };
 
 
@@ -56,6 +58,10 @@ char* lua_gc_node_to_jsonstr(struct lua_gc_node* node);
 struct lua_gc_node* lua_gc_node_copy(struct lua_gc_node* node);
 // 复制node节点及其所有子节点
 struct lua_gc_node* lua_gc_node_copyall(struct lua_gc_node* node);
+// 求node1到node2的差别
+// added: 指向增加的对象的指针
+// decreased: 指向减少的对象的指针
+void lua_gc_node_diff(struct lua_gc_node* node1, struct lua_gc_node* node2, struct lua_gc_node** added, struct lua_gc_node** decreased);
 
 #ifdef __cplusplus
 }

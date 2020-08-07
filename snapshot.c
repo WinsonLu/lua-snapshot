@@ -398,11 +398,19 @@ snapshot_print(lua_State* L) {
 		return 0;
 	}
 	void* ptr = lua_touserdata(L, -1);
-	if (ptr == NULL) {
-		luaL_error(L, "Argument 1 is not a userdata.");
+	if (!lua_getmetatable(L, -1)) {
+		luaL_error(L, "Argument is not a valid snapshot.");
+		return 0;
+	}
+	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+	lua_equal(L, -1, -2);
+	if (!lua_toboolean(L, -1)) {
+		luaL_error(L, "Argument is not a valid snapshot.");
 		return 0;
 	}
 	struct lua_gc_node* node = *(struct lua_gc_node**)(ptr);
+	if (node == NULL)
+		return 0;
 	char* jsonstr = lua_gc_node_to_jsonstr(node);
 	printf("%s\n", jsonstr);
 	free(jsonstr);
@@ -429,8 +437,9 @@ snapshot_tofile(lua_State* L) {
 	}
 	char* jsonstr = lua_gc_node_to_jsonstr(node);
 	const char* p = jsonstr;
-	while (*p++ != 0)
-		fwrite(p, 1, 1, f);
+	while (*p != 0) {
+		fwrite(p++, 1, 1, f);
+	}
 	fclose(f);
 	free(jsonstr);
 
@@ -484,6 +493,55 @@ snapshot_copy(lua_State* L) {
 
 	return 1;
 }
+
+static int
+snapshot_diff(lua_State* L, bool isAdded) {
+	if (lua_gettop(L) != 2) {
+		luaL_error(L, "Number of arguments should be 2.");
+		return 0;
+	}
+	void* ptr1 = lua_touserdata(L, 1);
+	void* ptr2 = lua_touserdata(L, 2);
+	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+	int i;
+	for (i = 1; i <= 2; ++i) {
+		lua_getmetatable(L, i);
+		lua_equal(L, -1, -2);
+		if (!lua_toboolean(L, -1)) {
+			luaL_error(L, "Argument %d is not a snapshot.", i);
+			return 0;
+		}
+		lua_pop(L, 2);
+	}
+	struct lua_gc_node* node1 = *(struct lua_gc_node**)ptr1;
+	struct lua_gc_node* node2 = *(struct lua_gc_node**)ptr2;
+	struct lua_gc_node* res = NULL;
+	if (isAdded)
+		lua_gc_node_diff(node1, node2, &res, NULL);
+	else
+		lua_gc_node_diff(node1, node2, NULL, &res);
+	if (res == NULL) {
+		lua_pushnil(L);
+		return 1;
+	}
+	void* ptr = lua_newuserdata(L, sizeof(res));
+	*(struct lua_gc_node**)ptr = res;
+	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+	lua_setmetatable(L, -2);
+
+	return 1;
+}
+
+static int
+snapshot_added(lua_State* L) {
+	return snapshot_diff(L, true);
+}
+
+static int
+snapshot_decreased(lua_State* L) {
+	return snapshot_diff(L, false);
+}
+
 static struct luaL_Reg
 snapshot_lib[] = {
 	{"snapshot", snapshot},
@@ -491,6 +549,8 @@ snapshot_lib[] = {
 	{"snapshot_tofile", snapshot_tofile},
 	{"snapshot_free", snapshot_free},
 	{"snapshot_copy", snapshot_copy},
+	{"snapshot_added", snapshot_added},
+	{"snapshot_decreased", snapshot_decreased},
 	{NULL, NULL}
 };
 

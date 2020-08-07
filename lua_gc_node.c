@@ -49,6 +49,7 @@ struct lua_gc_node* lua_gc_node_new(int type, const char* typestr, const void* p
 	memset(ret, 0, sizeof(*ret));
 	ret->type = type;
 	snprintf(ret->name, LUA_GC_NODE_NAME_SIZE, "%s:%p", typestr, pointer);
+	ret->lua_obj_ptr = pointer;
 	return ret;
 }
 // 释放节点内存，同时释放自己点的内存
@@ -173,6 +174,81 @@ struct lua_gc_node* lua_gc_node_copyall(struct lua_gc_node* node) {
 	}
 	return ret;
 }
+
+// 将node节点以及其所有的子节点都添加到哈希表中
+static void add_to_hashtable_by_ptr(struct lua_gc_node** htable, struct lua_gc_node* node) {
+	if (htable == NULL || node == NULL)
+		return;
+	HASH_ADD_PTR((*htable), lua_obj_ptr, node);
+	struct lua_gc_node* child = node->first_child;
+	while (child != NULL) {
+		add_to_hashtable_by_ptr(htable, child);
+		child = child->next_sibling;
+	}
+}
+
+// 根据哈希集求出node2的增节点
+static struct lua_gc_node* lua_gc_node_added_by_htable(struct lua_gc_node* htable, struct lua_gc_node* node) {
+	if (htable == NULL || node == NULL)
+		return NULL;
+	
+	struct lua_gc_node* child = node->first_child;
+	struct lua_gc_node* new_child = NULL;
+	struct lua_gc_node** new_child_ptr = &new_child;
+	while (child != NULL) {
+		*new_child_ptr = lua_gc_node_added_by_htable(htable, child);
+		if (*new_child_ptr != NULL)
+			new_child_ptr = &(*new_child_ptr)->next_sibling;
+		child = child->next_sibling;
+	}
+	// 如果子节点存在增节点，则构建本节点
+	// 或者本节点不存在于哈希集，也构建本节点
+	struct lua_gc_node* find_node = NULL;
+	HASH_FIND_PTR(htable, node->lua_obj_ptr, find_node);
+	struct lua_gc_node* ret = NULL;
+	if (new_child != NULL || find_node != NULL) {
+		ret = lua_gc_node_copy(node);
+		ret->first_child = new_child;
+	}
+	return ret;
+}
+
+static struct lua_gc_node* lua_gc_node_added(struct lua_gc_node* node1, struct lua_gc_node* node2) {
+	if (node1 == NULL || node2 == NULL)
+		return NULL;
+	struct lua_gc_node* hash_table = NULL;
+	// 先将node1的所有节点添加到哈希集
+	add_to_hashtable_by_ptr(&hash_table, node1);
+	// 然后根据对node2的每一个节点，都在哈希集中查找对应的节点是否存在，不存在则为增节点
+	struct lua_gc_node* ret = lua_gc_node_added_by_htable(hash_table, node2);
+	return ret;
+}
+
+static struct lua_gc_node* lua_gc_node_decreased(struct lua_gc_node* node1, struct lua_gc_node* node2) {
+	if (node1 == NULL || node2 == NULL)
+		return NULL;
+	
+	struct lua_gc_node* hash_table = NULL;
+	// 先将node2的所有节点都添加到哈希表
+	add_to_hashtable_by_ptr(&hash_table, node2);
+	// 然后根据对node1的每一个节点，都在哈希集中查找对应的节点是否存在，不存在则为减节点
+	struct lua_gc_node* ret = lua_gc_node_added_by_htable(hash_table, node1);
+	return ret;
+}
+
+// 求node1到node2的差别
+void lua_gc_node_diff(struct lua_gc_node* node1, struct lua_gc_node* node2, struct lua_gc_node** added, struct lua_gc_node** decreased) {
+	if (node1 == NULL || node2 == NULL) {
+		return;
+	}
+	if (added != NULL) {
+		*added = lua_gc_node_added(node1, node2);
+	}
+	if (decreased != NULL) {
+		*decreased = lua_gc_node_decreased(node1, node2);
+	}
+}
+
 
 #ifdef __cplusplus
 }
