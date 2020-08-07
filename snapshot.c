@@ -13,6 +13,7 @@ static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* pare
 static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
 static void traverse_userdata(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
 static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
+static void traverse_string(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
 
 char buff[128]; 
 
@@ -172,7 +173,7 @@ static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* par
         case LUA_TTHREAD:
             traverse_thread(L, dL, parent, desc);
             break;
-        default:
+		default:
             lua_pop(L, 1);
             break;
     }
