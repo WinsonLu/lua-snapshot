@@ -419,7 +419,7 @@ snapshot_print(lua_State* L) {
 }
 
 static int
-snapshot_tofile(lua_State* L) {
+snapshot_tofile(lua_State* L, bool is_formatted) {
 	if (lua_gettop(L) != 2) {
 		luaL_error(L, "Number of arguments should be 2.");
 		return 0;
@@ -436,8 +436,11 @@ snapshot_tofile(lua_State* L) {
 		luaL_error(L, "Failed to open file: %s to write.", filename);
 		return 0;
 	}
-	char* jsonstr = lua_gc_node_to_jsonstr(node);
-	printf("%d, %s\n", __LINE__, node->name);
+	char* jsonstr = NULL;
+	if (is_formatted)
+		jsonstr = lua_gc_node_to_jsonstrfmt(node);
+	else
+		jsonstr = lua_gc_node_to_jsonstr(node);
 	const char* p = jsonstr;
 	while (*p != 0) {
 		fwrite(p++, 1, 1, f);
@@ -446,6 +449,16 @@ snapshot_tofile(lua_State* L) {
 	free(jsonstr);
 
 	return 0;
+}
+
+static int
+snapshot_tofilenofmt(lua_State* L) {
+	return snapshot_tofile(L, false);
+}
+
+static int
+snapshot_tofilefmt(lua_State* L) {
+	return snapshot_tofile(L, true);
 }
 
 static int
@@ -535,7 +548,7 @@ snapshot_diff(lua_State* L, bool isAdded) {
 }
 
 static int
-snapshot_added(lua_State* L) {
+snapshot_increased(lua_State* L) {
 	return snapshot_diff(L, true);
 }
 
@@ -548,11 +561,12 @@ static struct luaL_Reg
 snapshot_lib[] = {
 	{"snapshot", snapshot},
 	{"print", snapshot_print},
-	{"tofile", snapshot_tofile},
+	{"tofile", snapshot_tofilenofmt},
+	{"tofilefmt", snapshot_tofilefmt},
 	{"free", snapshot_free},
 	{"copy", snapshot_copy},
-	{"added", snapshot_added},
-	{"decreased", snapshot_decreased},
+	{"incr", snapshot_increased},
+	{"decr", snapshot_decreased},
 	{NULL, NULL}
 };
 

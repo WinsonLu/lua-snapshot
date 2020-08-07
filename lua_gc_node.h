@@ -1,3 +1,6 @@
+#ifndef _XLUA_SNAPSHOT_LUA_GC_NODE_H_
+#define _XLUA_SNAPSHOT_LUA_GC_NODE_H_
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -28,7 +31,7 @@ struct lua_gc_node {
 	struct lua_gc_node* next_sibling; 		//兄弟节点
 	struct lua_gc_node* first_child; 		//第一个子节点
 	//unsigned long size;			 		// 该节点所占用内存量，叶子节点是自己节点的内存，非叶子节点是所有子节点的size之和
-	const void* lua_obj_ptr; 						//指向lua对象的指针，唯一标识lua对象
+	const void* lua_obj_ptr; 				//指向lua对象的指针，唯一标识lua对象
 	UT_hash_handle hh;
 };
 
@@ -54,15 +57,20 @@ void lua_gc_node_set_mem_funcs(lua_gc_node_alloc_fn alloc, lua_gc_node_free_fn f
 void lua_gc_node_set_default_mem_funcs();
 // 转换成json字符串, 需要手动使用free来释放
 char* lua_gc_node_to_jsonstr(struct lua_gc_node* node);
+// 转换成json格式化的字符串，需要手动使用free来释放内存
+char* lua_gc_node_to_jsonstrfmt(struct lua_gc_node* node);
 // 复制单一node节点,其子节点和兄弟节点将被置NULL
 struct lua_gc_node* lua_gc_node_copy(struct lua_gc_node* node);
 // 复制node节点及其所有子节点
 struct lua_gc_node* lua_gc_node_copyall(struct lua_gc_node* node);
+
 // 求node1到node2的差别
-// added: 指向增加的对象的指针
-// decreased: 指向减少的对象的指针
-void lua_gc_node_diff(struct lua_gc_node* node1, struct lua_gc_node* node2, struct lua_gc_node** added, struct lua_gc_node** decreased);
+// incr: 指向增加的对象的指针, 为null时不进行增量计算
+// decr: 指向减少的对象的指针, 为null时不进行减量计算
+void lua_gc_node_diff(struct lua_gc_node* node1, struct lua_gc_node* node2, struct lua_gc_node** incr, struct lua_gc_node** decr);
 
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* _XLUA_SNAPSHOT_LUA_GC_NODE_ */
