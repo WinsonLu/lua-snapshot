@@ -1,17 +1,42 @@
 require("snapshot")
 
-a = snapshot.snapshot()
+m = snapshot.snapshot()
 
-k = {1,2 ,3 ,4 ,5, 6, 7, 8, ['hello'] = '1238'}
+local tmp = {
+    player = {
+        uid = 1,
+        camps = {
+            {campid = 1},
+            {campid = 2},
+        },
+    },
+    player2 = {
+        roleid = 2,
+    },
+    [3] = {
+        player1 = 1,
+    },
+}
 
-for i =1,10000,1 do
-	table.insert(k, i)
+local a = {}
+local c = {}
+a.b = c
+c.d = a
+
+local msg = "bar"
+local foo = function()
+    print(msg)
 end
 
-b = snapshot.snapshot()
+local co = coroutine.create(function ()
+    print("hello world")
+end)
 
+n = snapshot.snapshot()
 
-c = snapshot.snapshot_added(a, b)
-snapshot.snapshot_tofile(c, "1.txt")
-
-snapshot.snapshot_tofile(b, "2.txt")
+diff = snapshot.snapshot_added(m, n)
+decreased = snapshot.snapshot_decreased(n, m)
+snapshot.snapshot_tofile(diff, "1.txt")
+--snapshot.snapshot_tofile(m, "2.txt")
+--snapshot.snapshot_tofile(n, "3.txt")
+snapshot.snapshot_tofile(decreased, "2.txt")

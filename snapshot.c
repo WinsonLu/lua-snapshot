@@ -278,8 +278,8 @@ static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* par
     luaL_buffinit(dL, &b);
     // 遍历函数局部变量
     while (lua_getstack(cL, level, &ar)) {
-        /*
         lua_getinfo(cL, "Sl", &ar);
+		/*
         snprintf(buff, sizeof(buff), "%s", ar.short_src);
         if (ar.currentline >= 0) {
             char tmp[16];
@@ -294,7 +294,7 @@ static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* par
                 const char* name = lua_getlocal(cL, &ar, i);
                 if (name == NULL)
                     break;
-                snprintf(buff, sizeof(buff), "[%s:%s:%d]", name, ar.short_src, ar.currentline);
+                snprintf(buff, sizeof(buff), "[%s:%s]", name, ar.short_src);
                 traverse_object(cL, dL, curr_node, buff);
             }
         }
@@ -385,6 +385,7 @@ snapshot(lua_State *L) {
     }
 	struct lua_gc_node** ptr = (struct lua_gc_node**)lua_newuserdata(L, sizeof(struct lua_gc_node*));
 	*ptr = father.first_child;
+	printf("%d, %p\n", __LINE__, ptr);
 	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
 	lua_setmetatable(L, -2);
     lua_close(dL);
@@ -412,7 +413,7 @@ snapshot_print(lua_State* L) {
 	if (node == NULL)
 		return 0;
 	char* jsonstr = lua_gc_node_to_jsonstr(node);
-	printf("%s\n", jsonstr);
+	printf("%d, %s\n", __LINE__, jsonstr);
 	free(jsonstr);
 	return 0;
 }
@@ -436,6 +437,7 @@ snapshot_tofile(lua_State* L) {
 		return 0;
 	}
 	char* jsonstr = lua_gc_node_to_jsonstr(node);
+	printf("%d, %s\n", __LINE__, node->name);
 	const char* p = jsonstr;
 	while (*p != 0) {
 		fwrite(p++, 1, 1, f);
@@ -545,12 +547,12 @@ snapshot_decreased(lua_State* L) {
 static struct luaL_Reg
 snapshot_lib[] = {
 	{"snapshot", snapshot},
-	{"snapshot_print", snapshot_print},
-	{"snapshot_tofile", snapshot_tofile},
-	{"snapshot_free", snapshot_free},
-	{"snapshot_copy", snapshot_copy},
-	{"snapshot_added", snapshot_added},
-	{"snapshot_decreased", snapshot_decreased},
+	{"print", snapshot_print},
+	{"tofile", snapshot_tofile},
+	{"free", snapshot_free},
+	{"copy", snapshot_copy},
+	{"added", snapshot_added},
+	{"decreased", snapshot_decreased},
 	{NULL, NULL}
 };
 

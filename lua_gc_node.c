@@ -52,6 +52,7 @@ struct lua_gc_node* lua_gc_node_new(int type, const char* typestr, const void* p
 	ret->lua_obj_ptr = pointer;
 	return ret;
 }
+
 // 释放节点内存，同时释放自己点的内存
 void lua_gc_node_free(struct lua_gc_node* node) {
 	if (node == NULL)
@@ -65,6 +66,7 @@ void lua_gc_node_free(struct lua_gc_node* node) {
 	}
 	mem_func.free(node);
 }
+
 // 释放所有空闲节点的内存
 void lua_gc_node_free_all() {
 	struct lua_gc_node* node = free_list;
@@ -179,7 +181,10 @@ struct lua_gc_node* lua_gc_node_copyall(struct lua_gc_node* node) {
 static void add_to_hashtable_by_ptr(struct lua_gc_node** htable, struct lua_gc_node* node) {
 	if (htable == NULL || node == NULL)
 		return;
-	HASH_ADD_PTR((*htable), lua_obj_ptr, node);
+	struct lua_gc_node* find_node = NULL;
+	HASH_FIND(hh, *htable, &node->lua_obj_ptr, sizeof(node->lua_obj_ptr), find_node);
+	if (find_node == NULL)
+		HASH_ADD(hh, (*htable), lua_obj_ptr, sizeof(node->lua_obj_ptr), node);
 	struct lua_gc_node* child = node->first_child;
 	while (child != NULL) {
 		add_to_hashtable_by_ptr(htable, child);
@@ -191,6 +196,12 @@ static void add_to_hashtable_by_ptr(struct lua_gc_node** htable, struct lua_gc_n
 static struct lua_gc_node* lua_gc_node_added_by_htable(struct lua_gc_node* htable, struct lua_gc_node* node) {
 	if (htable == NULL || node == NULL)
 		return NULL;
+	struct lua_gc_node* find_node = NULL;
+	HASH_FIND(hh, htable, &node->lua_obj_ptr, sizeof(node->lua_obj_ptr), find_node);
+	struct lua_gc_node* ret = NULL;
+	// 如果本节点不在哈希集中，则直接复制本节点及其所有子节点作为返回值
+	if (find_node == NULL)
+		ret = lua_gc_node_copyall(node);
 	
 	struct lua_gc_node* child = node->first_child;
 	struct lua_gc_node* new_child = NULL;
@@ -201,13 +212,11 @@ static struct lua_gc_node* lua_gc_node_added_by_htable(struct lua_gc_node* htabl
 			new_child_ptr = &(*new_child_ptr)->next_sibling;
 		child = child->next_sibling;
 	}
+
 	// 如果子节点存在增节点，则构建本节点
-	// 或者本节点不存在于哈希集，也构建本节点
-	struct lua_gc_node* find_node = NULL;
-	HASH_FIND_PTR(htable, node->lua_obj_ptr, find_node);
-	struct lua_gc_node* ret = NULL;
-	if (new_child != NULL || find_node != NULL) {
-		ret = lua_gc_node_copy(node);
+	if (new_child != NULL) {
+		if (ret == NULL)
+			ret = lua_gc_node_copy(node);
 		ret->first_child = new_child;
 	}
 	return ret;
