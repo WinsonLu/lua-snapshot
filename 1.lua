@@ -1,42 +1,10 @@
 require("snapshot")
 
-m = snapshot.snapshot()
+list = {"Hello", 2, "good", "bye"}
+a = snapshot.snapshot()
+table.insert(list, "G")
+table.insert(list, "B")
+b = snapshot.snapshot()
 
-local tmp = {
-    player = {
-        uid = 1,
-        camps = {
-            {campid = 1},
-            {campid = 2},
-        },
-    },
-    player2 = {
-        roleid = 2,
-    },
-    [3] = {
-        player1 = 1,
-    },
-}
-
-local a = {}
-local c = {}
-a.b = c
-c.d = a
-
-local msg = "bar"
-local foo = function()
-    print(msg)
-end
-
-local co = coroutine.create(function ()
-    print("hello world")
-end)
-
-n = snapshot.snapshot()
-
-diff = snapshot.added(m, n)
-decreased = snapshot.decreased(n, m)
-snapshot.snapshot_tofile(diff, "1.txt")
---snapshot.snapshot_tofile(m, "2.txt")
---snapshot.snapshot_tofile(n, "3.txt")
-snapshot.tofile(decreased, "2.txt")
+c = snapshot.incr(a, b)
+snapshot.tofilefmt(c, "incr.txt")

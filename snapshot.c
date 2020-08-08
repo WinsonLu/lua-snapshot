@@ -8,12 +8,11 @@ extern "C" {
 #include "lua_gc_node.h"
 #define LUA_GC_NODE_METATABLE "_lua_gc_node_metatable_"
 
-static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
-static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
-static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
-static void traverse_userdata(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
-static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
-static void traverse_string(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc);
+static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
+static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
+static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
+static void traverse_userdata(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
+static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
 
 char buff[128]; 
 
@@ -102,15 +101,15 @@ static const char* lua_type_to_string[] = {
     "numtags"
 };
 
-static struct lua_gc_node* gen_node(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc) {
+static struct lua_gc_node* gen_node(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link) {
     int type = lua_type(L, -1);
     const void *p = lua_topointer(L, -1);
     // 创建新的节点
     struct lua_gc_node* new_node = lua_gc_node_new(type, lua_typename(L, type), p);
     // 初始化引用量为1
     new_node->refs = 1;
-    // 复制描述
-    strncpy(new_node->desc, desc, LUA_GC_NODE_DESC_SIZE - 1);
+	// 复制链接
+    strncpy(new_node->link, link, LUA_GC_NODE_LINK_SIZE - 1);
      // 添加到父节点的子节点列表
     lua_gc_node_add_child(parent, new_node);
     /* TODO 添加对size字段的计算 */
@@ -158,20 +157,32 @@ static bool is_marked(lua_State* dL, const void* p) {
 
 
 
-static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc) {
+static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link) {
+	// 判断该对象是否是一个snapshot对象	
+	if (lua_getmetatable(L, -1)) {
+		luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+		lua_equal(L, -1, -2);
+		// 如果是，则跳过
+		if (lua_toboolean(L, -1)) {
+			lua_pop(L, 3);
+			return;
+		}
+		lua_pop(L, 2);
+	}
+
     int type = lua_type(L, -1);
     switch (type)  {
         case LUA_TTABLE:
-            traverse_table(L, dL, parent, desc);
+            traverse_table(L, dL, parent, link);
             break;
         case LUA_TUSERDATA:
-            traverse_userdata(L, dL, parent, desc);
+            traverse_userdata(L, dL, parent, link);
             break;
         case LUA_TFUNCTION:
-            traverse_function(L, dL, parent, desc);
+            traverse_function(L, dL, parent, link);
             break;
         case LUA_TTHREAD:
-            traverse_thread(L, dL, parent, desc);
+            traverse_thread(L, dL, parent, link);
             break;
 		default:
             lua_pop(L, 1);
@@ -179,7 +190,7 @@ static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* par
     }
 }
 
-static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc) {
+static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link) {
     const void *p = lua_topointer(L, -1);
     if (p == NULL)
         return;
@@ -190,7 +201,7 @@ static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* pare
     }
 
 
-    struct lua_gc_node* curr_node = gen_node(L, dL, parent, desc);
+    struct lua_gc_node* curr_node = gen_node(L, dL, parent, link);
 
     bool weakk = false;
     bool weakv = false;
@@ -206,11 +217,12 @@ static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* pare
         lua_pop(L, 1);
 
         luaL_checkstack(L, LUA_MINSTACK, NULL);
-        traverse_table(L, dL, curr_node, "_metatable_");
+        traverse_object(L, dL, curr_node, "[metatable]");
     }
 
     // 遍历table
     lua_pushnil(L);
+	size_t tbl_size = 0;
     while (lua_next(L, -2) != 0) {
         // 跳过弱引用的value
         if (weakv) { lua_pop(L, 1); }
@@ -222,12 +234,15 @@ static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* pare
             lua_pushvalue(L, -1); 
             traverse_object(L, dL, curr_node, "[key]");
         }
+		tbl_size++;
     }
-
+	// 设置table的描述，主要是大小
+	snprintf(buff, sizeof(buff), "(size: %lu)", tbl_size);
+	strncat(curr_node->desc, buff, LUA_GC_NODE_DESC_SIZE);
     lua_pop(L, 1);
 }
 
-static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc) {
+static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link) {
     const void* p = lua_topointer(L, -1);
     if (p == NULL)
         return;
@@ -237,7 +252,7 @@ static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* p
         return;
     }
 
-    struct lua_gc_node* curr_node = gen_node(L, dL, parent, desc);
+    struct lua_gc_node* curr_node = gen_node(L, dL, parent, link);
     // 遍历upvalue
     int i;
     for (i = 1; ; i++) {
@@ -254,10 +269,12 @@ static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* p
         snprintf(buff, sizeof(buff), "(func: %s:%d)", ar.short_src, ar.linedefined);
         lua_pushstring(dL, buff);
         lua_rawsetp(dL, SOURCE, curr_node);
+		// 设置function节点的desc,主要包括定义的源文件名和行数
+		snprintf(curr_node->desc, sizeof(buff), buff, LUA_GC_NODE_DESC_SIZE);
     }
 }
 
-static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc) {
+static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link) {
     const void* p = lua_topointer(L, -1);
     if (p == NULL)
         return;
@@ -266,7 +283,7 @@ static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* par
         return;
     }
 
-    struct lua_gc_node* curr_node = gen_node(L, dL, parent, desc);
+    struct lua_gc_node* curr_node = gen_node(L, dL, parent, link);
     
     int level = 0;
     lua_State* cL = lua_tothread(L, -1);
@@ -305,7 +322,7 @@ static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* par
     lua_pop(L, 1);
 }
 
-static void traverse_userdata(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* desc) {
+static void traverse_userdata(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link) {
     const void* p = lua_topointer(L, -1);
     if (p == NULL)
         return;
@@ -315,17 +332,17 @@ static void traverse_userdata(lua_State* L, lua_State* dL, struct lua_gc_node* p
         return;
     }
 
-    struct lua_gc_node* curr_node = gen_node(L, dL, parent, desc);
+    struct lua_gc_node* curr_node = gen_node(L, dL, parent, link);
 
     if (lua_getmetatable(L, -1)) {
-        traverse_table(L, dL, curr_node, "_metatable_");
+        traverse_object(L, dL, curr_node, "[metatable]");
     }
 
     lua_getuservalue(L, -1);
     if (lua_isnil(L, -1)) {
         lua_pop(L, 2);
     } else {
-        traverse_object(L, dL, curr_node, "_userdata_");
+        traverse_object(L, dL, curr_node, "[userdata]");
         lua_pop(L, 1);
     }
 }
@@ -337,7 +354,7 @@ static void traverse_node(struct lua_gc_node* node, int depth) {
     for (i = 0; i < depth; ++i)
         printf("\t");
     
-    printf("[%s:%s]\n", node->name, node->desc);
+    printf("[%s:%s]\n", node->name, node->link);
     struct lua_gc_node* child =node->first_child;
     for (; child != NULL; child=child->next_sibling) {
         traverse_node(child, depth+1);
@@ -367,7 +384,7 @@ snapshot(lua_State *L) {
     struct lua_gc_node father = {};
     if (nargs == 0) {
         lua_pushvalue(L, LUA_REGISTRYINDEX);
-        traverse_object(L, dL, &father, "_REGISTRY_");
+        traverse_object(L, dL, &father, "[REGISTRY]");
         //traverse_node(father.first_child, 0);
         //char* jsonstr = lua_gc_node_to_jsonstr(father.first_child);
         //printf("%s\n", jsonstr);
@@ -375,9 +392,9 @@ snapshot(lua_State *L) {
         lua_pop(L, 1);
     }
     else {
-        const char* desc = lua_tostring(L, -1);
+        const char* link = lua_tostring(L, -1);
         lua_pushvalue(L, -2);
-        traverse_object(L, dL, &father, desc);
+        traverse_object(L, dL, &father, link);
         //traverse_node(father.first_child, 0);
         //char* jsonstr = lua_gc_node_to_jsonstr(father.first_child);
         //printf("%s\n", jsonstr);
@@ -386,7 +403,6 @@ snapshot(lua_State *L) {
     }
 	struct lua_gc_node** ptr = (struct lua_gc_node**)lua_newuserdata(L, sizeof(struct lua_gc_node*));
 	*ptr = father.first_child;
-	printf("%d, %p\n", __LINE__, ptr);
 	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
 	lua_setmetatable(L, -2);
     lua_close(dL);
@@ -469,7 +485,10 @@ snapshot_free(lua_State* L) {
 		return 0;
 	}
 	void* ptr = lua_touserdata(L, -1);
-	lua_getmetatable(L, -1);
+	if (!lua_getmetatable(L, -1)) {
+		luaL_error(L, "Argument is not a snapshot.");
+		return 0;
+	}
 	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
 	lua_equal(L, -1, -2);
 	bool same = lua_toboolean(L, -1);
@@ -491,7 +510,10 @@ snapshot_copy(lua_State* L) {
 		return 0;
 	}
 	void* ptr = lua_touserdata(L, -1);
-	lua_getmetatable(L, -1);
+	if (!lua_getmetatable(L, -1)) {
+		luaL_error(L, "Argument is not a snapshot.");
+		return 0;
+	}
 	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
 	lua_equal(L, -1, -2);
 	bool same = lua_toboolean(L, -1);

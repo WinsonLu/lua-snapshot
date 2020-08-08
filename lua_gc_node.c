@@ -4,7 +4,9 @@ extern "C" {
 #include "lua_gc_node.h"
 #include "cJSON.h"
 #define DEFAULT_ALLOC_SIZE (sizeof(struct lua_gc_node)*32)
+#define DEFAULT_BUFF_SIZE 512
 
+static char buff[DEFAULT_BUFF_SIZE];
 
 static struct lua_gc_node* default_alloc();
 static void default_free(struct lua_gc_node*);
@@ -100,6 +102,14 @@ int lua_gc_node_set_desc(struct lua_gc_node* node, const char* desc) {
 	return 0;
 }
 
+// 设置link
+int lua_gc_node_set_link(struct lua_gc_node* node, const char* link) {
+	if (node == NULL)
+		return -1;
+	strncpy(node->link, link, LUA_GC_NODE_LINK_SIZE - 1);
+	return 0;
+}
+
 // 添加child节点
 void lua_gc_node_add_child(struct lua_gc_node* father, struct lua_gc_node* son) {
 	if (father == NULL || son == NULL)
@@ -131,6 +141,7 @@ static cJSON* lua_gc_node_to_jsonobject(struct lua_gc_node* node) {
 	cJSON_AddNumberToObject(ret, "type", node->type);
 	cJSON_AddNumberToObject(ret, "refs", node->refs);
 	cJSON_AddStringToObject(ret, "desc", node->desc);
+	cJSON_AddStringToObject(ret, "link", node->link);
 	cJSON* child_array = cJSON_CreateArray();
 	struct lua_gc_node* child = node->first_child;
 	while (child != NULL) {
@@ -202,6 +213,23 @@ static void add_to_hashtable_by_ptr(struct lua_gc_node** htable, struct lua_gc_n
 	}
 }
 
+// 从tbl的desc中取出size
+// 样例desc: (size: 10)
+static int get_table_size_from_desc(const char* desc) {
+	if (desc == NULL)
+		return 0;
+	while (*desc != 0 && !(*desc >= '0' && *desc <= '9'))
+		desc++;
+	if (*desc == 0)
+		return 0;
+	char* ptr = buff;
+	while (*desc != 0 && (*desc >= '0' && *desc <= '9')) {
+		*ptr++ = *desc++;
+	}
+	*ptr = '\0';
+	return atoi(buff);
+}
+
 // 根据哈希集求出node2的增节点
 static struct lua_gc_node* lua_gc_node_incr_by_htable(struct lua_gc_node* htable, struct lua_gc_node* node) {
 	if (htable == NULL || node == NULL)
@@ -209,9 +237,9 @@ static struct lua_gc_node* lua_gc_node_incr_by_htable(struct lua_gc_node* htable
 	struct lua_gc_node* find_node = NULL;
 	HASH_FIND(hh, htable, &node->lua_obj_ptr, sizeof(node->lua_obj_ptr), find_node);
 	struct lua_gc_node* ret = NULL;
-	// 如果本节点不在哈希集中，则直接复制本节点及其所有子节点作为返回值
+	// 如果本节点不在哈希集中，则复制本节点
 	if (find_node == NULL)
-		ret = lua_gc_node_copyall(node);
+		ret = lua_gc_node_copy(node);
 	
 	struct lua_gc_node* child = node->first_child;
 	struct lua_gc_node* new_child = NULL;
@@ -223,13 +251,24 @@ static struct lua_gc_node* lua_gc_node_incr_by_htable(struct lua_gc_node* htable
 		child = child->next_sibling;
 	}
 
-	// 如果子节点存在增节点，则构建本节点
+	// 如果子节点存在增节点
 	if (new_child != NULL) {
 		if (ret == NULL)
 			ret = lua_gc_node_copy(node);
 		ret->first_child = new_child;
+	} 
+	// 如果类型是table，判断其size是否增加
+	else if (node->type == LUA_TTABLE && find_node != NULL) {
+		int tbl1_size = get_table_size_from_desc(find_node->desc);
+		int tbl2_size = get_table_size_from_desc(node->desc);
+		if (tbl2_size > tbl1_size) {
+			ret = lua_gc_node_copy(node);
+			snprintf(buff, sizeof(buff), "(+%d)", tbl2_size - tbl1_size);
+			strncat(ret->desc, buff, LUA_GC_NODE_DESC_SIZE);
+		}
 	}
 	return ret;
+
 }
 
 static struct lua_gc_node* lua_gc_node_incr(struct lua_gc_node* node1, struct lua_gc_node* node2) {

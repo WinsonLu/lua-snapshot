@@ -1,0 +1,22 @@
+{
+	"name":	"table:0x13828c0",
+	"type":	5,
+	"refs":	1,
+	"desc":	"(size: 9)",
+	"link":	"[REGISTRY]",
+	"childs":	[{
+			"name":	"table:0x1382930",
+			"type":	5,
+			"refs":	3,
+			"desc":	"(size: 39)",
+			"link":	"[2]",
+			"childs":	[{
+					"name":	"table:0x138ba30",
+					"type":	5,
+					"refs":	1,
+					"desc":	"(size: 6)(+2)",
+					"link":	"list",
+					"childs":	[]
+				}]
+		}]
+}

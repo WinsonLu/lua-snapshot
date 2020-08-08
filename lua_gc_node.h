@@ -12,6 +12,7 @@ extern "C" {
 #include "uthash.h"
 #define LUA_GC_NODE_NAME_SIZE 32
 #define LUA_GC_NODE_DESC_SIZE 64
+#define LUA_GC_NODE_LINK_SIZE 32
 
 enum lua_gc_node_type {
 	LUA_STRING_TYPE = 4,
@@ -27,6 +28,7 @@ struct lua_gc_node {
 	int type;  								//节点的类型如 string、table、function、userdata、thread
 	unsigned int refs;			 			//引用次数
 	char desc[LUA_GC_NODE_DESC_SIZE];		//节点描述
+	char link[LUA_GC_NODE_LINK_SIZE]; 		//节点连接名称 如 _G, REGISTRY, 
 
 	struct lua_gc_node* next_sibling; 		//兄弟节点
 	struct lua_gc_node* first_child; 		//第一个子节点
