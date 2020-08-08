@@ -51,6 +51,8 @@ void lua_gc_node_free_all();
 unsigned int lua_gc_node_count(struct lua_gc_node* node);
 // 设置描述
 int lua_gc_node_set_desc(struct lua_gc_node* node, const char* desc);
+// 设置link
+int lua_gc_node_set_link(struct lua_gc_node* node, const char* link);
 // 添加child节点
 void lua_gc_node_add_child(struct lua_gc_node* father, struct lua_gc_node* son);
 // 设置内存分配、释放函数
