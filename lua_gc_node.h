@@ -37,7 +37,6 @@ struct lua_gc_node {
 	UT_hash_handle hh;
 };
 
-
 typedef struct lua_gc_node* (*lua_gc_node_alloc_fn)();
 typedef void (*lua_gc_node_free_fn)(struct lua_gc_node*);
 
@@ -67,7 +66,6 @@ char* lua_gc_node_to_jsonstrfmt(struct lua_gc_node* node);
 struct lua_gc_node* lua_gc_node_copy(struct lua_gc_node* node);
 // 复制node节点及其所有子节点
 struct lua_gc_node* lua_gc_node_copyall(struct lua_gc_node* node);
-
 // 求node1到node2的差别
 // incr: 指向增加的对象的指针, 为null时不进行增量计算
 // decr: 指向减少的对象的指针, 为null时不进行减量计算

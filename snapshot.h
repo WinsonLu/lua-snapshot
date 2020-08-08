@@ -7,7 +7,6 @@ extern "C" {
 #include "lua.h"
 #include "lauxlib.h"
 int luaopen_snapshot(lua_State* L);
-
 #ifdef __cplusplus
 }
 #endif

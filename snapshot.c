@@ -6,6 +6,7 @@ extern "C" {
 #include <lualib.h>
 #include <stdio.h>
 #include "lua_gc_node.h"
+#include "cJSON.h"
 #define LUA_GC_NODE_METATABLE "_lua_gc_node_metatable_"
 
 static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
@@ -430,8 +431,8 @@ snapshot_print(lua_State* L) {
 	if (node == NULL)
 		return 0;
 	char* jsonstr = lua_gc_node_to_jsonstr(node);
-	printf("%d, %s\n", __LINE__, jsonstr);
-	free(jsonstr);
+	printf("%s\n", jsonstr);
+	cJSON_free(jsonstr);
 	return 0;
 }
 
@@ -454,16 +455,23 @@ snapshot_tofile(lua_State* L, bool is_formatted) {
 		return 0;
 	}
 	char* jsonstr = NULL;
-	if (is_formatted)
-		jsonstr = lua_gc_node_to_jsonstrfmt(node);
-	else
-		jsonstr = lua_gc_node_to_jsonstr(node);
+	if (node == NULL) {
+		jsonstr = "";
+		fwrite("", 1, 1, f);
+		fclose(f);
+		return 0;
+	} else {
+		if (is_formatted)
+			jsonstr = lua_gc_node_to_jsonstrfmt(node);
+		else
+			jsonstr = lua_gc_node_to_jsonstr(node);
+	}
 	const char* p = jsonstr;
 	while (*p != 0) {
 		fwrite(p++, 1, 1, f);
 	}
 	fclose(f);
-	free(jsonstr);
+	cJSON_free(jsonstr);
 
 	return 0;
 }
@@ -558,10 +566,6 @@ snapshot_diff(lua_State* L, bool isAdded) {
 		lua_gc_node_diff(node1, node2, &res, NULL);
 	else
 		lua_gc_node_diff(node1, node2, NULL, &res);
-	if (res == NULL) {
-		lua_pushnil(L);
-		return 1;
-	}
 	void* ptr = lua_newuserdata(L, sizeof(res));
 	*(struct lua_gc_node**)ptr = res;
 	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);

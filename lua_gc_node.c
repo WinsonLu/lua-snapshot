@@ -20,7 +20,7 @@ static struct lua_gc_node_mem_fn  mem_func = {
 	default_alloc,
 	default_free
 };
-
+static int alloc = 0;
 // 默认内存分配函数
 static struct lua_gc_node* default_alloc() {
 	if (free_list == NULL) {
@@ -32,6 +32,7 @@ static struct lua_gc_node* default_alloc() {
 			first = first + 1;
 		}
 		first->next_sibling = NULL;
+		alloc += 32;
 	}
 	struct lua_gc_node* ret = free_list;
 	free_list = free_list->next_sibling;
@@ -158,7 +159,7 @@ char* lua_gc_node_to_jsonstr(struct lua_gc_node* node) {
 		return NULL;
 	cJSON* jsonobj = lua_gc_node_to_jsonobject(node);
 	char* ret = cJSON_PrintUnformatted(jsonobj);
-	cJSON_free(jsonobj);
+	cJSON_Delete(jsonobj);
 	return ret;
 }
 
@@ -168,7 +169,7 @@ char* lua_gc_node_to_jsonstrfmt(struct lua_gc_node* node) {
 		return NULL;
 	cJSON* jsonobj = lua_gc_node_to_jsonobject(node);
 	char* ret = cJSON_Print(jsonobj);
-	cJSON_free(jsonobj);
+	cJSON_Delete(jsonobj);
 	return ret;
 }
 
@@ -214,7 +215,7 @@ static void add_to_hashtable_by_ptr(struct lua_gc_node** htable, struct lua_gc_n
 }
 
 // 从tbl的desc中取出size
-// 样例desc: (size: 10)
+// 样例desc: (size: 10) -> 10
 static int get_table_size_from_desc(const char* desc) {
 	if (desc == NULL)
 		return 0;
@@ -258,11 +259,12 @@ static struct lua_gc_node* lua_gc_node_incr_by_htable(struct lua_gc_node* htable
 		ret->first_child = new_child;
 	} 
 	// 如果类型是table，判断其size是否增加
-	else if (node->type == LUA_TTABLE && find_node != NULL) {
+	if (node->type == LUA_TTABLE && find_node != NULL) {
 		int tbl1_size = get_table_size_from_desc(find_node->desc);
 		int tbl2_size = get_table_size_from_desc(node->desc);
 		if (tbl2_size > tbl1_size) {
-			ret = lua_gc_node_copy(node);
+			if (ret == NULL)
+				ret = lua_gc_node_copy(node);
 			snprintf(buff, sizeof(buff), "(+%d)", tbl2_size - tbl1_size);
 			strncat(ret->desc, buff, LUA_GC_NODE_DESC_SIZE);
 		}
@@ -282,7 +284,7 @@ static struct lua_gc_node* lua_gc_node_incr(struct lua_gc_node* node1, struct lu
 	return ret;
 }
 
-static struct lua_gc_node* lua_gc_node_decreased(struct lua_gc_node* node1, struct lua_gc_node* node2) {
+static struct lua_gc_node* lua_gc_node_decr(struct lua_gc_node* node1, struct lua_gc_node* node2) {
 	if (node1 == NULL || node2 == NULL)
 		return NULL;
 	
@@ -303,10 +305,9 @@ void lua_gc_node_diff(struct lua_gc_node* node1, struct lua_gc_node* node2, stru
 		*incr = lua_gc_node_incr(node1, node2);
 	}
 	if (decr != NULL) {
-		*decr = lua_gc_node_decreased(node1, node2);
+		*decr = lua_gc_node_decr(node1, node2);
 	}
 }
-
 
 #ifdef __cplusplus
 }
