@@ -25,7 +25,9 @@ enum lua_gc_node_type {
 // 128字节
 struct lua_gc_node {
 	char name[LUA_GC_NODE_NAME_SIZE];		//节点的名称如 function:0x125200380, table:0x11d3530f0
-	int type;  								//节点的类型如 string、table、function、userdata、thread
+	unsigned short type;  					//节点的类型如 string、table、function、userdata、thread
+	short is_incr_or_decr; 					//标识该节点是否是新增/减少节点，
+											// +1: 新增，0：无所谓， -1：减少
 	unsigned int refs;			 			//引用次数
 	char desc[LUA_GC_NODE_DESC_SIZE];		//节点描述
 	char link[LUA_GC_NODE_LINK_SIZE]; 		//节点连接名称 如 _G, REGISTRY, 
@@ -62,6 +64,8 @@ void lua_gc_node_set_default_mem_funcs();
 char* lua_gc_node_to_jsonstr(struct lua_gc_node* node);
 // 转换成json格式化的字符串，需要手动使用free来释放内存
 char* lua_gc_node_to_jsonstrfmt(struct lua_gc_node* node);
+// 转换成str格式化的字符串，不需要使用free来释放内存
+char* lua_gc_node_to_str(struct lua_gc_node* node);
 // 复制单一node节点,其子节点和兄弟节点将被置NULL
 struct lua_gc_node* lua_gc_node_copy(struct lua_gc_node* node);
 // 复制node节点及其所有子节点

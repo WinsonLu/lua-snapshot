@@ -7,7 +7,7 @@ extern "C" {
 #include <stdio.h>
 #include "lua_gc_node.h"
 #include "cJSON.h"
-#define LUA_GC_NODE_METATABLE "_lua_gc_node_metatable_"
+#define SNAPSHOT_METATABLE "_snapshot_metatable_"
 
 static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
 static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
@@ -15,7 +15,7 @@ static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* p
 static void traverse_userdata(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
 static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
 
-char buff[128]; 
+static __thread char  buff[128]; 
 
 #if LUA_VERSION_NUM == 501
 static void
@@ -161,7 +161,7 @@ static bool is_marked(lua_State* dL, const void* p) {
 static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link) {
 	// 判断该对象是否是一个snapshot对象	
 	if (lua_getmetatable(L, -1)) {
-		luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+		luaL_getmetatable(L, SNAPSHOT_METATABLE);
 		lua_equal(L, -1, -2);
 		// 如果是，则跳过
 		if (lua_toboolean(L, -1)) {
@@ -260,7 +260,7 @@ static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* p
         const char* name = lua_getupvalue(L, -1, i);
         if (name == NULL)
             break;
-        traverse_object(L, dL, curr_node, name[0] ? name : "_upvalue_");
+        traverse_object(L, dL, curr_node, name[0] ? name : "[upvalue]");
     }
     if (lua_iscfunction(L, -1)) {
         lua_pop(L, 1);
@@ -319,6 +319,7 @@ static void traverse_thread(lua_State* L, lua_State* dL, struct lua_gc_node* par
         }
         ++level;
     }
+	snprintf(curr_node->desc, LUA_GC_NODE_DESC_SIZE, "(vars: %d)", level);
 
     lua_pop(L, 1);
 }
@@ -404,10 +405,161 @@ snapshot(lua_State *L) {
     }
 	struct lua_gc_node** ptr = (struct lua_gc_node**)lua_newuserdata(L, sizeof(struct lua_gc_node*));
 	*ptr = father.first_child;
-	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+	luaL_getmetatable(L, SNAPSHOT_METATABLE);
 	lua_setmetatable(L, -2);
     lua_close(dL);
     return 1;
+}
+
+static int
+snapshot_printjson(lua_State* L, bool is_formatted) {
+	if (lua_gettop(L) != 1) {
+		luaL_error(L, "Number of arguments should be 1.");
+		return 0;
+	}
+	void* ptr = lua_touserdata(L, -1);
+	if (!lua_getmetatable(L, -1)) {
+		luaL_error(L, "Argument is not a valid snapshot.");
+		return 0;
+	}
+	luaL_getmetatable(L, SNAPSHOT_METATABLE);
+	lua_equal(L, -1, -2);
+	if (!lua_toboolean(L, -1)) {
+		luaL_error(L, "Argument is not a valid snapshot.");
+		return 0;
+	}
+	struct lua_gc_node* node = *(struct lua_gc_node**)(ptr);
+	if (node == NULL)
+		return 0;
+	char* jsonstr = is_formatted ? lua_gc_node_to_jsonstrfmt(node) : lua_gc_node_to_jsonstr(node);
+	printf("%s\n", jsonstr);
+	cJSON_free(jsonstr);
+	return 0;
+}
+
+static int
+snapshot_print_jsonfmt(lua_State* L) {
+	return snapshot_printjson(L, true);
+}
+
+static int
+snapshot_print_json_nofmt(lua_State* L) {
+	return snapshot_printjson(L, false);
+}
+
+static int
+snapshot_tojsonfile(lua_State* L, bool is_formatted) {
+	if (lua_gettop(L) != 2) {
+		luaL_error(L, "Number of arguments should be 2.");
+		return 0;
+	}
+	// 检查是否是snapshot类型
+	void* ptr = lua_touserdata(L, -2);
+	if (ptr != NULL) {
+		if (!lua_getmetatable(L, -2)) {
+			luaL_error(L, "Argument 1 should be a snapshot.");
+			return 0;
+		}
+		luaL_getmetatable(L, SNAPSHOT_METATABLE);
+		lua_equal(L, -1, -2);
+		if (!lua_toboolean(L, -1)) {
+			luaL_error(L, "Argument 1 should be a snapshot.");
+			return 0;
+		}
+		lua_pop(L, 2);
+	} else {
+		luaL_error(L, "Argument 1 should be a snapshot.");
+		return 0;
+	}
+	const char* filename = lua_tostring(L, -1);
+	if (filename == NULL) {
+		luaL_error(L, "Argument 2 should be string.");
+		return 0;
+	}
+	struct lua_gc_node* node = *(struct lua_gc_node**)(ptr);
+	FILE* f = fopen(filename, "wb+");
+	if (f == NULL) {
+		luaL_error(L, "Failed to open file: %s to write.", filename);
+		return 0;
+	}
+	char* jsonstr = NULL;
+	if (node == NULL) {
+		// 截断文件
+		fclose(f);
+		return 0;
+	} 
+	if (is_formatted)
+		jsonstr = lua_gc_node_to_jsonstrfmt(node);
+	else
+		jsonstr = lua_gc_node_to_jsonstr(node);
+	const char* p = jsonstr;
+	while (*p != 0)
+		fwrite(p++, 1, 1, f);
+	fclose(f);
+	cJSON_free(jsonstr);
+
+	return 0;
+}
+
+static int
+snapshot_tojsonfile_nofmt(lua_State* L) {
+	return snapshot_tojsonfile(L, false);
+}
+
+static int
+snapshot_tojsonfile_fmt(lua_State* L) {
+	return snapshot_tojsonfile(L, true);
+}
+
+static int
+snapshot_tofile(lua_State* L) {
+	if (lua_gettop(L) != 2) {
+		luaL_error(L, "Number of arguments should be 2.");
+		return 0;
+	}
+	// 检查是否是snapshot类型
+	void* ptr = lua_touserdata(L, -2);
+	if (ptr != NULL) {
+		if (!lua_getmetatable(L, -2)) {
+			luaL_error(L, "Argument 1 should be a snapshot.");
+			return 0;
+		}
+		luaL_getmetatable(L, SNAPSHOT_METATABLE);
+		lua_equal(L, -1, -2);
+		if (!lua_toboolean(L, -1)) {
+			luaL_error(L, "Argument 1 should be a snapshot.");
+			return 0;
+		}
+		lua_pop(L, 2);
+	} else {
+		luaL_error(L, "Argument 1 should be a snapshot.");
+		return 0;
+	}
+	const char* filename = lua_tostring(L, -1);
+	if (filename == NULL) {
+		luaL_error(L, "Argument 2 should be string.");
+		return 0;
+	}
+	struct lua_gc_node* node = *(struct lua_gc_node**)ptr;
+	FILE* f = fopen(filename, "wb+");
+	if (f == NULL) {
+		luaL_error(L, "Failed to open file: %s to write.", filename);
+		return 0;
+	}
+	const char* str = NULL;
+	if (node == NULL) {
+		// 截断文件
+		fclose(f);
+		return 0;
+	} 
+	str = lua_gc_node_to_str(node);
+	const char* p = str;
+	while (*p != 0) {
+		fwrite(p++, 1, 1, f);
+	}
+	fclose(f);
+
+	return 0;
 }
 
 static int
@@ -421,69 +573,16 @@ snapshot_print(lua_State* L) {
 		luaL_error(L, "Argument is not a valid snapshot.");
 		return 0;
 	}
-	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+	luaL_getmetatable(L, SNAPSHOT_METATABLE);
 	lua_equal(L, -1, -2);
 	if (!lua_toboolean(L, -1)) {
 		luaL_error(L, "Argument is not a valid snapshot.");
 		return 0;
 	}
 	struct lua_gc_node* node = *(struct lua_gc_node**)(ptr);
-	if (node == NULL)
-		return 0;
-	char* jsonstr = lua_gc_node_to_jsonstr(node);
-	printf("%s\n", jsonstr);
-	cJSON_free(jsonstr);
+	const char* str = lua_gc_node_to_str(node);
+	printf("%s", str);
 	return 0;
-}
-
-static int
-snapshot_tofile(lua_State* L, bool is_formatted) {
-	if (lua_gettop(L) != 2) {
-		luaL_error(L, "Number of arguments should be 2.");
-		return 0;
-	}
-	void* ptr = lua_touserdata(L, -2);
-	const char* filename = lua_tostring(L, -1);
-	if (ptr == NULL || filename == NULL) {
-		luaL_error(L, "Arugment type error.");
-		return 0;
-	}
-	struct lua_gc_node* node = *(struct lua_gc_node**)(ptr);
-	FILE* f = fopen(filename, "wb+");
-	if (f == NULL) {
-		luaL_error(L, "Failed to open file: %s to write.", filename);
-		return 0;
-	}
-	char* jsonstr = NULL;
-	if (node == NULL) {
-		jsonstr = "";
-		fwrite("", 1, 1, f);
-		fclose(f);
-		return 0;
-	} else {
-		if (is_formatted)
-			jsonstr = lua_gc_node_to_jsonstrfmt(node);
-		else
-			jsonstr = lua_gc_node_to_jsonstr(node);
-	}
-	const char* p = jsonstr;
-	while (*p != 0) {
-		fwrite(p++, 1, 1, f);
-	}
-	fclose(f);
-	cJSON_free(jsonstr);
-
-	return 0;
-}
-
-static int
-snapshot_tofilenofmt(lua_State* L) {
-	return snapshot_tofile(L, false);
-}
-
-static int
-snapshot_tofilefmt(lua_State* L) {
-	return snapshot_tofile(L, true);
 }
 
 static int
@@ -497,7 +596,7 @@ snapshot_free(lua_State* L) {
 		luaL_error(L, "Argument is not a snapshot.");
 		return 0;
 	}
-	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+	luaL_getmetatable(L, SNAPSHOT_METATABLE);
 	lua_equal(L, -1, -2);
 	bool same = lua_toboolean(L, -1);
 	if (!same) {
@@ -522,7 +621,7 @@ snapshot_copy(lua_State* L) {
 		luaL_error(L, "Argument is not a snapshot.");
 		return 0;
 	}
-	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+	luaL_getmetatable(L, SNAPSHOT_METATABLE);
 	lua_equal(L, -1, -2);
 	bool same = lua_toboolean(L, -1);
 	if (!same) {
@@ -548,7 +647,7 @@ snapshot_diff(lua_State* L, bool isAdded) {
 	}
 	void* ptr1 = lua_touserdata(L, 1);
 	void* ptr2 = lua_touserdata(L, 2);
-	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+	luaL_getmetatable(L, SNAPSHOT_METATABLE);
 	int i;
 	for (i = 1; i <= 2; ++i) {
 		lua_getmetatable(L, i);
@@ -568,7 +667,7 @@ snapshot_diff(lua_State* L, bool isAdded) {
 		lua_gc_node_diff(node1, node2, NULL, &res);
 	void* ptr = lua_newuserdata(L, sizeof(res));
 	*(struct lua_gc_node**)ptr = res;
-	luaL_getmetatable(L, LUA_GC_NODE_METATABLE);
+	luaL_getmetatable(L, SNAPSHOT_METATABLE);
 	lua_setmetatable(L, -2);
 
 	return 1;
@@ -586,21 +685,24 @@ snapshot_decreased(lua_State* L) {
 
 static struct luaL_Reg
 snapshot_lib[] = {
-	{"snapshot", snapshot},
-	{"print", snapshot_print},
-	{"tofile", snapshot_tofilenofmt},
-	{"tofilefmt", snapshot_tofilefmt},
-	{"free", snapshot_free},
-	{"copy", snapshot_copy},
-	{"incr", snapshot_increased},
-	{"decr", snapshot_decreased},
+	{"snapshot", snapshot}, 						// 保存当前时刻的某一table或registry的快照，并返回一个snapshot(userdata)对象
+	{"print", snapshot_print}, 						// 转换为字符串，并打印
+	{"print_jsonfmt", snapshot_print_jsonfmt}, 		// 转换为格式化过的json字符串，并打印
+	{"print_json", snapshot_print_json_nofmt}, 		// 转换为未格式化过的json字符串, 并打印
+	{"to_file", snapshot_tofile}, 					// 转换为字符串，并输出到指定文件
+	{"to_jsonfile", snapshot_tojsonfile_nofmt}, 	// 转换为未格式化过的json字符串，并输出到指定文件
+	{"to_jsonfilefmt", snapshot_tojsonfile_fmt}, 	// 转换为格式化过的json字符串，并输出到指定文件
+	{"free", snapshot_free}, 						// 手动释放snapshot所占用的内存
+	{"copy", snapshot_copy}, 						// 复制snapshot	
+	{"incr", snapshot_increased}, 					// 求出snapshot1 到 snapshot2 的增量，返回类型仍为snapshot
+	{"decr", snapshot_decreased}, 					// 求出snapshot1 到 snapshot2 的减量，返回类型仍为snapshot
 	{NULL, NULL}
 };
 
 int
 luaopen_snapshot(lua_State* L) {
     luaL_checkversion(L);
-	luaL_newmetatable(L, LUA_GC_NODE_METATABLE);
+	luaL_newmetatable(L, SNAPSHOT_METATABLE);
 	lua_pushstring(L, "__gc");
 	lua_pushcfunction(L, lua_gc_node_gc);
 	lua_rawset(L, -3);

@@ -3,15 +3,20 @@ extern "C" {
 #endif
 #include "lua_gc_node.h"
 #include "cJSON.h"
+#include <stdbool.h>
 #define DEFAULT_ALLOC_SIZE (sizeof(struct lua_gc_node)*32)
 #define DEFAULT_BUFF_SIZE 512
 
-static char buff[DEFAULT_BUFF_SIZE];
+static __thread char buff[DEFAULT_BUFF_SIZE];
 
 static struct lua_gc_node* default_alloc();
 static void default_free(struct lua_gc_node*);
 
-static struct lua_gc_node* free_list = NULL;
+static __thread struct lua_gc_node* free_list = NULL;
+// 存放str内存
+static __thread char* strbuff = NULL;
+static __thread long strbuff_len = 0;
+
 struct lua_gc_node_mem_fn {
 	lua_gc_node_alloc_fn alloc;
 	lua_gc_node_free_fn free;
@@ -70,7 +75,7 @@ void lua_gc_node_free(struct lua_gc_node* node) {
 	mem_func.free(node);
 }
 
-// 释放所有空闲节点的内存
+// 释放所有空闲节点和str内存
 void lua_gc_node_free_all() {
 	struct lua_gc_node* node = free_list;
 	struct lua_gc_node* next = NULL;
@@ -80,6 +85,10 @@ void lua_gc_node_free_all() {
 		node = next;
 	}
 	free_list = NULL;
+	if (strbuff != NULL)
+		free(strbuff);
+	strbuff = NULL;
+	strbuff_len = 0;
 }
 
 // 统计所有节点的数量（包括空闲和非空闲的节点）
@@ -173,6 +182,75 @@ char* lua_gc_node_to_jsonstrfmt(struct lua_gc_node* node) {
 	return ret;
 }
 
+// 为strbuff分配内存，
+// need_copy是否将旧的缓冲区的内容复制到新的缓冲区
+static bool realloc_strbuff(long size, bool need_copy) {
+	if (size <= strbuff_len)
+		return true;
+
+	char* newstrbuff = (char*)malloc(sizeof(char)*size);
+	if (!need_copy && strbuff != NULL)
+		free(strbuff);
+	else if (need_copy && strbuff != NULL) {
+		memcpy(newstrbuff, strbuff, strbuff_len);
+		free(strbuff);
+	}
+	strbuff = newstrbuff;
+	strbuff_len = size;
+	return true;
+}
+
+// 将单一节点打印到strbuff中，如果strbuff长度不足，会进行扩容
+static inline void lua_gc_node_to_str_single(struct lua_gc_node* node, const char* full_link, long* total_str_len) {
+	if (node == NULL)
+		return;
+	snprintf(buff, sizeof(buff), "%26s\t%6d\t%18s\t%s\n", node->name, node->refs, node->desc, full_link);
+	if (strbuff_len - *total_str_len < 512) {
+		realloc_strbuff(strbuff_len*2, true);
+	}
+	strncat(strbuff, buff, strbuff_len - 1);
+	*total_str_len += strlen(buff);
+}
+
+// 将节点和其所有子节点都转化成str格式化字符串，保存在strbuff中
+static void lua_gc_node_to_str_recursively(struct lua_gc_node* node, char* node_link_buff, long node_link_buff_len, long* total_str_len) {
+	if (node == NULL)
+		return;
+	// 修改full link
+	strncat(node_link_buff, node->link, 256 - 1);
+	// 如果是叶子节点,只打印本节点
+	if (node->first_child == NULL) {
+		lua_gc_node_to_str_single(node, node_link_buff, total_str_len);
+	}
+	// 如果不是
+	else {
+		// 打印本节点
+		if (node->is_incr_or_decr != 0)
+			lua_gc_node_to_str_single(node, node_link_buff, total_str_len);
+		long link_len = strlen(node->link);
+		strncat(node_link_buff, ".", 256 - 1);
+		link_len++;
+		struct lua_gc_node* child = node->first_child;
+		while (child != NULL) {
+			lua_gc_node_to_str_recursively(child, node_link_buff, node_link_buff_len + link_len, total_str_len);
+			child = child->next_sibling;
+		}
+	}
+	// 恢复 full link
+	node_link_buff[node_link_buff_len] = 0;
+}
+
+char* lua_gc_node_to_str(struct lua_gc_node* node) {
+	if (strbuff == NULL)
+		realloc_strbuff(4096, false);
+	char node_link_buff[256] = "";
+	snprintf(strbuff, strbuff_len, "%26s\t%6s\t%18s\t%s\n", "name", "refs", "desc", "link");
+	long total_str_len = strlen(strbuff);
+	lua_gc_node_to_str_recursively(node, node_link_buff, 0, &total_str_len);
+	strbuff[total_str_len] = 0;
+	return strbuff;
+}
+
 // 复制单一node节点,其子节点和兄弟节点将被置NULL
 struct lua_gc_node* lua_gc_node_copy(struct lua_gc_node* node) {
 	if (node == NULL)
@@ -231,28 +309,39 @@ static int get_table_size_from_desc(const char* desc) {
 	return atoi(buff);
 }
 
-// 根据哈希集求出node2的增节点
-static struct lua_gc_node* lua_gc_node_incr_by_htable(struct lua_gc_node* htable, struct lua_gc_node* node) {
+// 根据哈希集求出node2的增节点/或减节点
+static struct lua_gc_node* lua_gc_node_incr_or_decr_by_htable(struct lua_gc_node* htable, struct lua_gc_node* node, bool is_incr) {
 	if (htable == NULL || node == NULL)
 		return NULL;
 	struct lua_gc_node* find_node = NULL;
 	HASH_FIND(hh, htable, &node->lua_obj_ptr, sizeof(node->lua_obj_ptr), find_node);
 	struct lua_gc_node* ret = NULL;
 	// 如果本节点不在哈希集中，则复制本节点
-	if (find_node == NULL)
+	if (find_node == NULL) {
 		ret = lua_gc_node_copy(node);
+		if (is_incr) {
+			// 标识为增节点
+			ret->is_incr_or_decr = 1;
+			strncat(ret->desc, "(+)", LUA_GC_NODE_DESC_SIZE);
+		}
+		else {
+			// 标识为减节点
+			ret->is_incr_or_decr = -1;
+			strncat(ret->desc, "(-)", LUA_GC_NODE_DESC_SIZE);
+		}
+	}
 	
 	struct lua_gc_node* child = node->first_child;
 	struct lua_gc_node* new_child = NULL;
 	struct lua_gc_node** new_child_ptr = &new_child;
 	while (child != NULL) {
-		*new_child_ptr = lua_gc_node_incr_by_htable(htable, child);
+		*new_child_ptr = lua_gc_node_incr_or_decr_by_htable(htable, child, is_incr);
 		if (*new_child_ptr != NULL)
 			new_child_ptr = &(*new_child_ptr)->next_sibling;
 		child = child->next_sibling;
 	}
 
-	// 如果子节点存在增节点
+	// 如果子节点存在增节点/减节点
 	if (new_child != NULL) {
 		if (ret == NULL)
 			ret = lua_gc_node_copy(node);
@@ -264,8 +353,17 @@ static struct lua_gc_node* lua_gc_node_incr_by_htable(struct lua_gc_node* htable
 		int tbl2_size = get_table_size_from_desc(node->desc);
 		if (tbl2_size > tbl1_size) {
 			if (ret == NULL)
-				ret = lua_gc_node_copy(node);
-			snprintf(buff, sizeof(buff), "(+%d)", tbl2_size - tbl1_size);
+				ret = lua_gc_node_copy(find_node);
+			if (is_incr) {
+				snprintf(buff, sizeof(buff), "(+%d)", tbl2_size - tbl1_size);
+				// 标识为增节点
+				ret->is_incr_or_decr = 1;
+			}
+			else {
+				snprintf(buff, sizeof(buff), "(-%d)", tbl2_size - tbl1_size);
+				// 标识为减节点
+				ret->is_incr_or_decr = -1;
+			}
 			strncat(ret->desc, buff, LUA_GC_NODE_DESC_SIZE);
 		}
 	}
@@ -280,7 +378,7 @@ static struct lua_gc_node* lua_gc_node_incr(struct lua_gc_node* node1, struct lu
 	// 先将node1的所有节点添加到哈希集
 	add_to_hashtable_by_ptr(&hash_table, node1);
 	// 然后根据对node2的每一个节点，都在哈希集中查找对应的节点是否存在，不存在则为增节点
-	struct lua_gc_node* ret = lua_gc_node_incr_by_htable(hash_table, node2);
+	struct lua_gc_node* ret = lua_gc_node_incr_or_decr_by_htable(hash_table, node2, true);
 	return ret;
 }
 
@@ -292,7 +390,7 @@ static struct lua_gc_node* lua_gc_node_decr(struct lua_gc_node* node1, struct lu
 	// 先将node2的所有节点都添加到哈希表
 	add_to_hashtable_by_ptr(&hash_table, node2);
 	// 然后根据对node1的每一个节点，都在哈希集中查找对应的节点是否存在，不存在则为减节点
-	struct lua_gc_node* ret = lua_gc_node_incr_by_htable(hash_table, node1);
+	struct lua_gc_node* ret = lua_gc_node_incr_or_decr_by_htable(hash_table, node1, false);
 	return ret;
 }
 
