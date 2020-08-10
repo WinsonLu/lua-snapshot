@@ -213,7 +213,7 @@ static inline void lua_gc_node_to_str_single(struct lua_gc_node* node, const cha
 }
 
 // 将节点和其所有子节点都转化成str格式化字符串，保存在strbuff中
-static void lua_gc_node_to_str_recursively(struct lua_gc_node* node, char* node_link_buff, long node_link_buff_len, long* total_str_len) {
+static void lua_gc_node_to_str_recursively(struct lua_gc_node* node, char* node_link_buff, long node_link_buff_len, long* total_str_len, bool is_normal_node) {
 	if (node == NULL)
 		return;
 	// 修改full link
@@ -224,20 +224,41 @@ static void lua_gc_node_to_str_recursively(struct lua_gc_node* node, char* node_
 	}
 	// 如果不是
 	else {
-		// 打印本节点
-		if (node->is_incr_or_decr != 0)
+		// 如果是normal节点，打印本节点
+		if (is_normal_node)
 			lua_gc_node_to_str_single(node, node_link_buff, total_str_len);
+		// 如果是非normal节点，根据其是否是增/减节点，选择性打印
+		else if (node->is_incr_or_decr != 0) {
+			lua_gc_node_to_str_single(node, node_link_buff, total_str_len);
+		}
 		long link_len = strlen(node->link);
 		strncat(node_link_buff, ".", 256 - 1);
 		link_len++;
 		struct lua_gc_node* child = node->first_child;
 		while (child != NULL) {
-			lua_gc_node_to_str_recursively(child, node_link_buff, node_link_buff_len + link_len, total_str_len);
+			lua_gc_node_to_str_recursively(child, node_link_buff, node_link_buff_len + link_len, total_str_len, is_normal_node);
 			child = child->next_sibling;
 		}
 	}
 	// 恢复 full link
 	node_link_buff[node_link_buff_len] = 0;
+}
+
+// 判断一个节点对应的snapshot是普通snapshot还是增量/减量返回的snapshot
+// true: normal
+bool is_normal_or_delta_node(struct lua_gc_node* node) {
+	if (node == NULL)
+		return true;
+	if (node->is_incr_or_decr != 0)
+		return false;
+	struct lua_gc_node* child = node->first_child;
+	while (child != NULL) {
+		if (!is_normal_or_delta_node(child))
+			return false;
+		child = child->next_sibling;
+	}
+
+	return true;
 }
 
 char* lua_gc_node_to_str(struct lua_gc_node* node) {
@@ -246,7 +267,8 @@ char* lua_gc_node_to_str(struct lua_gc_node* node) {
 	char node_link_buff[256] = "";
 	snprintf(strbuff, strbuff_len, "%26s\t%6s\t%18s\t%s\n", "name", "refs", "desc", "link");
 	long total_str_len = strlen(strbuff);
-	lua_gc_node_to_str_recursively(node, node_link_buff, 0, &total_str_len);
+	bool is_normal_node = is_normal_or_delta_node(node);
+	lua_gc_node_to_str_recursively(node, node_link_buff, 0, &total_str_len, is_normal_node);
 	strbuff[total_str_len] = 0;
 	return strbuff;
 }
@@ -343,8 +365,10 @@ static struct lua_gc_node* lua_gc_node_incr_or_decr_by_htable(struct lua_gc_node
 
 	// 如果子节点存在增节点/减节点
 	if (new_child != NULL) {
-		if (ret == NULL)
+		if (ret == NULL && is_incr)
 			ret = lua_gc_node_copy(node);
+		else if (ret == NULL && !is_incr)
+			ret = lua_gc_node_copy(find_node);
 		ret->first_child = new_child;
 	} 
 	// 如果类型是table，判断其size是否增加
@@ -352,8 +376,11 @@ static struct lua_gc_node* lua_gc_node_incr_or_decr_by_htable(struct lua_gc_node
 		int tbl1_size = get_table_size_from_desc(find_node->desc);
 		int tbl2_size = get_table_size_from_desc(node->desc);
 		if (tbl2_size > tbl1_size) {
-			if (ret == NULL)
+			if (ret == NULL && is_incr)
+				ret = lua_gc_node_copy(node);
+			else if (ret == NULL && !is_incr)
 				ret = lua_gc_node_copy(find_node);
+
 			if (is_incr) {
 				snprintf(buff, sizeof(buff), "(+%d)", tbl2_size - tbl1_size);
 				// 标识为增节点
