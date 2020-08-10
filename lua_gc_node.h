@@ -12,7 +12,7 @@ extern "C" {
 #include "uthash.h"
 #define LUA_GC_NODE_NAME_SIZE 32
 #define LUA_GC_NODE_DESC_SIZE 64
-#define LUA_GC_NODE_LINK_SIZE 32
+#define LUA_GC_NODE_LINK_SIZE 64
 
 enum lua_gc_node_type {
 	LUA_STRING_TYPE = 4,
@@ -22,7 +22,6 @@ enum lua_gc_node_type {
 	LUA_TTHREAD_TYPE = 8,
 };
 
-// 128字节
 struct lua_gc_node {
 	char name[LUA_GC_NODE_NAME_SIZE];		//节点的名称如 function:0x125200380, table:0x11d3530f0
 	unsigned short type;  					//节点的类型如 string、table、function、userdata、thread
