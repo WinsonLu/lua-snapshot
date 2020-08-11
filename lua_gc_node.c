@@ -25,7 +25,6 @@ static struct lua_gc_node_mem_fn  mem_func = {
 	default_alloc,
 	default_free
 };
-static int alloc = 0;
 // 默认内存分配函数
 static struct lua_gc_node* default_alloc() {
 	if (free_list == NULL) {
@@ -37,7 +36,6 @@ static struct lua_gc_node* default_alloc() {
 			first = first + 1;
 		}
 		first->next_sibling = NULL;
-		alloc += 32;
 	}
 	struct lua_gc_node* ret = free_list;
 	free_list = free_list->next_sibling;
@@ -406,6 +404,7 @@ static struct lua_gc_node* lua_gc_node_incr(struct lua_gc_node* node1, struct lu
 	add_to_hashtable_by_ptr(&hash_table, node1);
 	// 然后根据对node2的每一个节点，都在哈希集中查找对应的节点是否存在，不存在则为增节点
 	struct lua_gc_node* ret = lua_gc_node_incr_or_decr_by_htable(hash_table, node2, true);
+	HASH_CLEAR(hh, hash_table);
 	return ret;
 }
 
@@ -418,6 +417,7 @@ static struct lua_gc_node* lua_gc_node_decr(struct lua_gc_node* node1, struct lu
 	add_to_hashtable_by_ptr(&hash_table, node2);
 	// 然后根据对node1的每一个节点，都在哈希集中查找对应的节点是否存在，不存在则为减节点
 	struct lua_gc_node* ret = lua_gc_node_incr_or_decr_by_htable(hash_table, node1, false);
+	HASH_CLEAR(hh, hash_table);
 	return ret;
 }
 
