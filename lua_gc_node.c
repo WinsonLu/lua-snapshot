@@ -12,7 +12,20 @@ static __thread char buff[DEFAULT_BUFF_SIZE];
 static struct lua_gc_node* default_alloc();
 static void default_free(struct lua_gc_node*);
 
+
+// 内存分配链表
+struct mem_buff_header {
+	struct mem_buff_header* next;
+	void* start;
+	void* curr;
+	void* end;
+};
+
+static __thread struct mem_buff_header* mem_buff_list = NULL;
+static __thread struct mem_buff_header* mem_buff_list_tail = NULL;
+
 static __thread struct lua_gc_node* free_list = NULL;
+
 // 存放str内存
 static __thread char* strbuff = NULL;
 static __thread long strbuff_len = 0;
@@ -25,21 +38,57 @@ static struct lua_gc_node_mem_fn  mem_func = {
 	default_alloc,
 	default_free
 };
+
+// 内存池扩展
+static inline void realloc_mem_buff() {
+	// 如果没有分配过内存，则分配
+	struct mem_buff_header* header = (struct mem_buff_header*)malloc(sizeof(struct mem_buff_header) + DEFAULT_ALLOC_SIZE);
+	header->start = (void*)(header + 1);
+	header->curr = header->start;
+	header->end = (char*)header + sizeof(struct mem_buff_header) + DEFAULT_ALLOC_SIZE;
+	header->next = NULL;
+	if (mem_buff_list_tail == NULL) {
+		header->next = NULL;
+		mem_buff_list = mem_buff_list_tail = header;
+	}
+	else {
+		mem_buff_list_tail->next = header;
+		mem_buff_list_tail = header;
+	}
+}
+
+// 查询内存池是否能分配size大小内存
+static inline bool mem_buff_has_buffer(size_t size) {
+	if (mem_buff_list_tail == NULL)
+		return false;
+	
+	return ((char*)mem_buff_list_tail->end - (char*)mem_buff_list_tail->curr >= size);
+}
+
+// 向内存池中申请size大小的内存
+static inline void* mem_buff_alloc_size(size_t size) {
+	if (!mem_buff_has_buffer(size)) {
+		realloc_mem_buff();
+		mem_buff_list_tail->curr = (void*)((char*)mem_buff_list_tail->curr + size);
+		return mem_buff_list_tail->start;
+	} else {
+		void *ret = mem_buff_list_tail->curr;
+		mem_buff_list_tail->curr = (void*)((char*)mem_buff_list_tail->curr + size);
+		return ret;
+	}
+}
+
+
 // 默认内存分配函数
 static struct lua_gc_node* default_alloc() {
 	if (free_list == NULL) {
-		struct lua_gc_node* first = (struct lua_gc_node*)malloc(DEFAULT_ALLOC_SIZE);
-		struct lua_gc_node* last = (struct lua_gc_node*)((char*)first + DEFAULT_ALLOC_SIZE);
-		free_list = first;
-		while (first != last - 1) {
-			first->next_sibling = first + 1;
-			first = first + 1;
-		}
-		first->next_sibling = NULL;
+		struct lua_gc_node* ret = (struct lua_gc_node*)mem_buff_alloc_size(sizeof(struct lua_gc_node));
+		return ret;
+	} else {
+		struct lua_gc_node* ret = free_list;
+		free_list = free_list->next_sibling;
+		return ret;
 	}
-	struct lua_gc_node* ret = free_list;
-	free_list = free_list->next_sibling;
-	return ret;
 }
 
 // 默认内存释放函数
@@ -75,14 +124,15 @@ void lua_gc_node_free(struct lua_gc_node* node) {
 
 // 释放所有空闲节点和str内存
 void lua_gc_node_free_all() {
-	struct lua_gc_node* node = free_list;
-	struct lua_gc_node* next = NULL;
-	while (node != NULL) {
-		next = node->next_sibling;
-		free(node);
-		node = next;
+	struct mem_buff_header* header = mem_buff_list;
+	struct mem_buff_header* next_header = NULL;
+	while (header != NULL) {
+		next_header = header->next;
+		free(header);
+		header = next_header;
 	}
-	free_list = NULL;
+	mem_buff_list = NULL;
+	mem_buff_list_tail = NULL;
 	if (strbuff != NULL)
 		free(strbuff);
 	strbuff = NULL;
