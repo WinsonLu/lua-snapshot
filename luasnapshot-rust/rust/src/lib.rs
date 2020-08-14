@@ -1,13 +1,12 @@
+mod cJSON {
+    include!("cJSON.rs");
+}
 extern crate libc;
-extern crate serde;
-extern crate serde_json;
 use libc::*;
-use serde::ser::{Serialize, SerializeMap, Serializer};
-use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-static mut str_buffer: String = String::new();
+static mut STR_BUFFER: String = String::new();
 
 #[derive(Copy, PartialEq)]
 pub enum LuaGcNodeType {
@@ -205,11 +204,11 @@ impl LuaGcNode {
 
     fn _to_str_single(&self, full_link: &mut String) {
         let line_str = format!(
-            "{:26}\t{:6}\t{:18}\t{}\n",
+            "{:>26}\t{:>6}\t{:>18}\t{}\n",
             &self.name, self.refs, &self.desc, &full_link
         );
         unsafe {
-            str_buffer.push_str(&line_str);
+            STR_BUFFER.push_str(&line_str);
         }
     }
 
@@ -254,19 +253,18 @@ impl LuaGcNode {
 
     pub fn to_str(&self) -> &'static String {
         unsafe {
-            str_buffer.truncate(0);
-            str_buffer.push_str(&format!(
-                "{:26}\t{:6}\t{:18}\t{}\n",
+            STR_BUFFER.truncate(0);
+            STR_BUFFER.push_str(&format!(
+                "{:>26}\t{:>6}\t{:>18}\t{}\n",
                 "name", "refs", "desc", "link"
             ));
         }
-        println!("count: {}", self.count());
         let mut full_link_str = String::new();
         let is_normal_node = self._is_normal_or_delta();
         self._to_str_recursively(&mut full_link_str, is_normal_node);
 
         unsafe {
-            return &str_buffer;
+            return &STR_BUFFER;
         }
     }
 
@@ -332,7 +330,7 @@ impl LuaGcNode {
                 }
             }
             child = n.next_sibling.as_ref();
-        };
+        }
 
         // 如果子节点存在增/减节点
         if !new_child.is_none() {
@@ -381,6 +379,52 @@ impl LuaGcNode {
     pub fn decr(&self, from: &Self) -> Option<Self> {
         let htable = self._add_to_hashtable();
         return from._get_incr_or_decr_by_htable(&htable, false);
+    }
+
+    fn create_jsonobj(&self) -> *mut cJSON::cJSON {
+        unsafe {
+            let ret = cJSON::cJSON_CreateObject();
+            cJSON::cJSON_AddStringToObject(
+                ret,
+                "name".as_ptr() as *const i8,
+                self.name.as_ptr() as *const i8,
+            );
+            cJSON::cJSON_AddNumberToObject(ret, "refs".as_ptr() as *const i8, self.refs.into());
+            cJSON::cJSON_AddStringToObject(
+                ret,
+                "desc".as_ptr() as *const i8,
+                self.desc.as_ptr() as *const i8,
+            );
+            cJSON::cJSON_AddStringToObject(
+                ret,
+                "link".as_ptr() as *const i8,
+                self.link.as_ptr() as *const i8,
+            );
+            let array = cJSON::cJSON_CreateArray();
+            let mut child = self.first_child.as_ref();
+            while let Some(n) = child {
+                cJSON::cJSON_AddItemToArray(array, n.create_jsonobj());
+                child = n.next_sibling.as_ref();
+            }
+            cJSON::cJSON_AddItemToObject(ret, "childs".as_ptr() as *const i8, array);
+            return ret;
+        }
+    }
+
+    pub fn to_json(&self) -> *const i8 {
+        unsafe {
+            let json = self.create_jsonobj();
+            let res = cJSON::cJSON_PrintUnformatted(json);
+            return res;
+        }
+    }
+
+    pub fn to_jsonfmt(&self) -> *const i8 {
+        unsafe {
+            let json = self.create_jsonobj();
+            let res = cJSON::cJSON_Print(json);
+            return res;
+        }
     }
 }
 
@@ -584,6 +628,30 @@ pub extern "C" fn lua_gc_node_detach_first_child(node: *mut LuaGcNode) -> *mut L
             } else {
                 return Box::into_raw(child.unwrap());
             }
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn lua_gc_node_to_jsonstr(node: *mut LuaGcNode) -> *const i8 {
+    if node as u8 == 0 {
+        return 0 as *const i8;
+    } else {
+        unsafe {
+            let n = &*node;
+            return n.to_json();
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn lua_gc_node_to_jsonstrfmt(node: *mut LuaGcNode) -> *const i8 {
+    if node as u8 == 0 {
+        return 0 as *const i8;
+    } else {
+        unsafe {
+            let n = &*node;
+            return n.to_jsonfmt();
         }
     }
 }

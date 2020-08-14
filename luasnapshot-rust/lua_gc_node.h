@@ -17,16 +17,22 @@ struct lua_gc_node;
 
 // 分配新节点
 struct lua_gc_node* lua_gc_node_new(int type, const char* typestr, const void* pointer);
+
 // 释放节点内存，同时释放自己点的内存
 void lua_gc_node_free(struct lua_gc_node* node);
+
 // 释放所有空闲节点的内存
 void lua_gc_node_free_all();
+
 // 统计所有节点的数量
 unsigned int lua_gc_node_count(struct lua_gc_node* node);
+
 // 设置描述
 int lua_gc_node_set_desc(struct lua_gc_node* node, const char* desc);
+
 // 设置link
 int lua_gc_node_set_link(struct lua_gc_node* node, const char* link);
+
 // 添加child节点
 void lua_gc_node_add_child(struct lua_gc_node* father, struct lua_gc_node* son);
 /*
@@ -37,21 +43,28 @@ char* lua_gc_node_to_jsonstrfmt(struct lua_gc_node* node);
 */
 // 转换成str格式化的字符串，不需要使用free来释放内存
 char* lua_gc_node_to_str(struct lua_gc_node* node);
+
 // 复制单一node节点,其子节点和兄弟节点将被置NULL
 struct lua_gc_node* lua_gc_node_copy(struct lua_gc_node* node);
+
 // 复制node节点及其所有子节点
 struct lua_gc_node* lua_gc_node_copyall(struct lua_gc_node* node);
+
 // 求node1到node2的差别
 // incr: 指向增加的对象的指针, 为null时不进行增量计算
 // decr: 指向减少的对象的指针, 为null时不进行减量计算
 void lua_gc_node_diff(struct lua_gc_node* node1, struct lua_gc_node* node2, struct lua_gc_node** incr, struct lua_gc_node** decr);
 
+// 打印节点
 void lua_gc_node_print(struct lua_gc_node* node);
 
+// 获取节点的引用计数
 unsigned int lua_gc_node_get_refs(struct lua_gc_node* node1);
 
+// 设置节点的引用计数
 void lua_gc_node_set_refs(struct lua_gc_node* node, unsigned int refs);
 
+// 获取节点的子节点返回，并销毁节点
 struct lua_gc_node* lua_gc_node_detach_first_child(struct lua_gc_node* node);
 
 #ifdef __cplusplus
