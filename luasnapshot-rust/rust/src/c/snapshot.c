@@ -162,13 +162,12 @@ static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* par
 	// 判断该对象是否是一个snapshot对象	
 	if (lua_getmetatable(L, -1)) {
 		luaL_getmetatable(L, SNAPSHOT_METATABLE);
-		lua_equal(L, -1, -2);
 		// 如果是，则跳过
-		if (lua_toboolean(L, -1)) {
-			lua_pop(L, 3);
+		if (lua_rawequal(L, -1, -2)) {
+			lua_pop(L, 2);
 			return;
 		}
-		lua_pop(L, 2);
+		lua_pop(L, 1);
 	}
 
     int type = lua_type(L, -1);
@@ -411,8 +410,7 @@ snapshot_printjson(lua_State* L, bool is_formatted) {
 		return 0;
 	}
 	luaL_getmetatable(L, SNAPSHOT_METATABLE);
-	lua_equal(L, -1, -2);
-	if (!lua_toboolean(L, -1)) {
+	if (!lua_rawequal(L, -1, -2)) {
 		luaL_error(L, "Argument is not a valid snapshot.");
 		return 0;
 	}
@@ -449,8 +447,7 @@ snapshot_tojsonfile(lua_State* L, bool is_formatted) {
 			return 0;
 		}
 		luaL_getmetatable(L, SNAPSHOT_METATABLE);
-		lua_equal(L, -1, -2);
-		if (!lua_toboolean(L, -1)) {
+		if (!lua_rawequal(L, -1, -2)) {
 			luaL_error(L, "Argument 1 should be a snapshot.");
 			return 0;
 		}
@@ -513,8 +510,7 @@ snapshot_tofile(lua_State* L) {
 			return 0;
 		}
 		luaL_getmetatable(L, SNAPSHOT_METATABLE);
-		lua_equal(L, -1, -2);
-		if (!lua_toboolean(L, -1)) {
+		if (!lua_rawequal(L, -1, -2)) {
 			luaL_error(L, "Argument 1 should be a snapshot.");
 			return 0;
 		}
@@ -562,8 +558,7 @@ snapshot_print(lua_State* L) {
 		return 0;
 	}
 	luaL_getmetatable(L, SNAPSHOT_METATABLE);
-	lua_equal(L, -1, -2);
-	if (!lua_toboolean(L, -1)) {
+	if (!lua_rawequal(L, -1, -2)) {
 		luaL_error(L, "Argument is not a valid snapshot.");
 		return 0;
 	}
@@ -585,10 +580,8 @@ snapshot_free(lua_State* L) {
 		return 0;
 	}
 	luaL_getmetatable(L, SNAPSHOT_METATABLE);
-	lua_equal(L, -1, -2);
-	bool same = lua_toboolean(L, -1);
-	if (!same) {
-		lua_pop(L, 3);
+	if (!lua_rawequal(L, -1, -2)) {
+		lua_pop(L, 2);
 		return 0;
 	}
 	struct lua_gc_node* node = *(struct lua_gc_node**)ptr;
@@ -610,9 +603,7 @@ snapshot_copy(lua_State* L) {
 		return 0;
 	}
 	luaL_getmetatable(L, SNAPSHOT_METATABLE);
-	lua_equal(L, -1, -2);
-	bool same = lua_toboolean(L, -1);
-	if (!same) {
+	if (!lua_rawequal(L, -1, -2)) {
 		luaL_error(L, "Argument is not a snapshot.");
 		lua_pushnil(L);
 		return 1;
@@ -639,12 +630,11 @@ snapshot_diff(lua_State* L, bool isAdded) {
 	int i;
 	for (i = 1; i <= 2; ++i) {
 		lua_getmetatable(L, i);
-		lua_equal(L, -1, -2);
-		if (!lua_toboolean(L, -1)) {
+		if (!lua_rawequal(L, -1, -2)) {
 			luaL_error(L, "Argument %d is not a snapshot.", i);
 			return 0;
 		}
-		lua_pop(L, 2);
+		lua_pop(L, 1);
 	}
 	struct lua_gc_node* node1 = *(struct lua_gc_node**)ptr1;
 	struct lua_gc_node* node2 = *(struct lua_gc_node**)ptr2;

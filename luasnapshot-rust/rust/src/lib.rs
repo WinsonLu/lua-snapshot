@@ -384,22 +384,10 @@ impl LuaGcNode {
     fn create_jsonobj(&self) -> *mut cJSON::cJSON {
         unsafe {
             let ret = cJSON::cJSON_CreateObject();
-            cJSON::cJSON_AddStringToObject(
-                ret,
-                "name".as_ptr() as *const i8,
-                self.name.as_ptr() as *const i8,
-            );
+            cJSON::cJSON_AddStringToObject(ret, "name".as_ptr() as *const i8, self.name.as_ptr() as *const i8);
             cJSON::cJSON_AddNumberToObject(ret, "refs".as_ptr() as *const i8, self.refs.into());
-            cJSON::cJSON_AddStringToObject(
-                ret,
-                "desc".as_ptr() as *const i8,
-                self.desc.as_ptr() as *const i8,
-            );
-            cJSON::cJSON_AddStringToObject(
-                ret,
-                "link".as_ptr() as *const i8,
-                self.link.as_ptr() as *const i8,
-            );
+            cJSON::cJSON_AddStringToObject(ret, "desc".as_ptr() as *const i8, self.desc.as_ptr() as *const i8);
+            cJSON::cJSON_AddStringToObject(ret, "link".as_ptr() as *const i8, self.link.as_ptr() as *const i8);
             let array = cJSON::cJSON_CreateArray();
             let mut child = self.first_child.as_ref();
             while let Some(n) = child {
@@ -415,6 +403,7 @@ impl LuaGcNode {
         unsafe {
             let json = self.create_jsonobj();
             let res = cJSON::cJSON_PrintUnformatted(json);
+            cJSON::cJSON_Delete(json);
             return res;
         }
     }
@@ -423,6 +412,7 @@ impl LuaGcNode {
         unsafe {
             let json = self.create_jsonobj();
             let res = cJSON::cJSON_Print(json);
+            cJSON::cJSON_Delete(json);
             return res;
         }
     }
