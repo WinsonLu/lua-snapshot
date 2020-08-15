@@ -12,7 +12,6 @@ fn main() {
         .include("src/LuaUtil")
         .compile("libsnapshot1.so");
 
-
     let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     println!("cargo:rustc-link-search={}", project_dir);
     println!("cargo:rustc-link-lib=libsnapshot1.so");
