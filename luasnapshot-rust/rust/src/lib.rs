@@ -46,7 +46,10 @@ pub extern "C" fn lua_gc_node_count(node: *mut LuaGcNode::LuaGcNode) -> u32 {
 }
 
 #[no_mangle]
-pub extern "C" fn lua_gc_node_set_desc(node: *mut LuaGcNode::LuaGcNode, desc: *const c_char) -> c_int {
+pub extern "C" fn lua_gc_node_set_desc(
+    node: *mut LuaGcNode::LuaGcNode,
+    desc: *const c_char,
+) -> c_int {
     if node as u8 != 0 {
         unsafe {
             let n = &mut *node;
@@ -59,7 +62,10 @@ pub extern "C" fn lua_gc_node_set_desc(node: *mut LuaGcNode::LuaGcNode, desc: *c
 }
 
 #[no_mangle]
-pub extern "C" fn lua_gc_node_set_link(node: *mut LuaGcNode::LuaGcNode, link: *const c_char) -> c_int {
+pub extern "C" fn lua_gc_node_set_link(
+    node: *mut LuaGcNode::LuaGcNode,
+    link: *const c_char,
+) -> c_int {
     if node as u8 != 0 {
         unsafe {
             let n = &mut *node;
@@ -86,7 +92,9 @@ pub extern "C" fn lua_gc_node_copy(node: *mut LuaGcNode::LuaGcNode) -> *mut LuaG
 }
 
 #[no_mangle]
-pub extern "C" fn lua_gc_node_copyall(node: *mut LuaGcNode::LuaGcNode) -> *mut LuaGcNode::LuaGcNode {
+pub extern "C" fn lua_gc_node_copyall(
+    node: *mut LuaGcNode::LuaGcNode,
+) -> *mut LuaGcNode::LuaGcNode {
     if node as u8 != 0 {
         unsafe {
             let n = &mut *node;
@@ -110,7 +118,10 @@ pub extern "C" fn lua_gc_node_print(node: *mut LuaGcNode::LuaGcNode) {
 }
 
 #[no_mangle]
-pub extern "C" fn lua_gc_node_add_child(father: *mut LuaGcNode::LuaGcNode, son: *mut LuaGcNode::LuaGcNode) {
+pub extern "C" fn lua_gc_node_add_child(
+    father: *mut LuaGcNode::LuaGcNode,
+    son: *mut LuaGcNode::LuaGcNode,
+) {
     if father as u8 != 0 && son as u8 != 0 {
         unsafe {
             let f = &mut *father;
@@ -195,7 +206,9 @@ pub extern "C" fn lua_gc_node_set_refs(node: *mut LuaGcNode::LuaGcNode, refs: u3
 }
 
 #[no_mangle]
-pub extern "C" fn lua_gc_node_detach_first_child(node: *mut LuaGcNode::LuaGcNode) -> *mut LuaGcNode::LuaGcNode {
+pub extern "C" fn lua_gc_node_detach_first_child(
+    node: *mut LuaGcNode::LuaGcNode,
+) -> *mut LuaGcNode::LuaGcNode {
     if node as u8 == 0 {
         return 0 as *mut LuaGcNode::LuaGcNode;
     } else {
@@ -237,6 +250,6 @@ pub extern "C" fn lua_gc_node_to_jsonstrfmt(node: *mut LuaGcNode::LuaGcNode) -> 
 
 struct lua_State;
 extern "C" {
-    #[link(name="snapshot1")]
+    #[link(name = "snapshot1")]
     fn luaopen_snapshot(L: *mut lua_State) -> c_int;
 }
