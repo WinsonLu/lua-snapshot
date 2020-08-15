@@ -12,6 +12,12 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "staticlib"]
 name = "snapshot"
 
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+
 [dependencies]
 libc = "0.2.0"
 

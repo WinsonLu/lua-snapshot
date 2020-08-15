@@ -235,7 +235,7 @@ impl LuaGcNode {
 
     fn _is_normal_or_delta(&self) -> bool {
         if self.incr_or_decr != LuaGcNodeIncrOrDecr::No {
-            return true;
+            return false;
         } else {
             let mut child = self.first_child.as_ref();
             while let Some(n) = child {

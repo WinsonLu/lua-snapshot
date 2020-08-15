@@ -164,10 +164,10 @@ static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* par
 		luaL_getmetatable(L, SNAPSHOT_METATABLE);
 		// 如果是，则跳过
 		if (lua_rawequal(L, -1, -2)) {
-			lua_pop(L, 3);
+			lua_pop(L, 2);
 			return;
 		}
-		lua_pop(L, 2);
+		lua_pop(L, 1);
 	}
 
     int type = lua_type(L, -1);
@@ -451,7 +451,7 @@ snapshot_tojsonfile(lua_State* L, bool is_formatted) {
 			luaL_error(L, "Argument 1 should be a snapshot.");
 			return 0;
 		}
-		lua_pop(L, 2);
+		lua_pop(L, 1);
 	} else {
 		luaL_error(L, "Argument 1 should be a snapshot.");
 		return 0;
@@ -514,7 +514,7 @@ snapshot_tofile(lua_State* L) {
 			luaL_error(L, "Argument 1 should be a snapshot.");
 			return 0;
 		}
-		lua_pop(L, 2);
+		lua_pop(L, 1);
 	} else {
 		luaL_error(L, "Argument 1 should be a snapshot.");
 		return 0;
@@ -581,7 +581,6 @@ snapshot_free(lua_State* L) {
 	}
 	luaL_getmetatable(L, SNAPSHOT_METATABLE);
 	if (!lua_rawequal(L, -1, -2)) {
-		lua_pop(L, 2);
 		return 0;
 	}
 	struct lua_gc_node* node = *(struct lua_gc_node**)ptr;

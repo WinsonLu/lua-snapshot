@@ -5,16 +5,13 @@ fn main() {
     let mut builder = cc::Build::new();
 
     add_files_to_builder(&mut builder, &get_files_with_postfix_in_dir("src/c", ".c").ok().unwrap());
-    add_files_to_builder(&mut builder, &get_files_with_postfix_in_dir("src/LuaSrc", ".c").ok().unwrap());
     builder
         .include("src/c")
-        .include("src/LuaSrc")
-        .include("src/LuaUtil")
-        .compile("libsnapshot1.so");
+        .compile("libsnapshot1.a");
 
     let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     println!("cargo:rustc-link-search={}", project_dir);
-    println!("cargo:rustc-link-lib=libsnapshot1.so");
+    println!("cargo:rustc-link-lib=snapshot1");
 }
 
 fn add_files_to_builder(builder: &mut cc::Build, files: &Vec::<String>) {
