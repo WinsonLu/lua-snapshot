@@ -164,10 +164,10 @@ static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* par
 		luaL_getmetatable(L, SNAPSHOT_METATABLE);
 		// 如果是，则跳过
 		if (lua_rawequal(L, -1, -2)) {
-			lua_pop(L, 2);
+			lua_pop(L, 3);
 			return;
 		}
-		lua_pop(L, 1);
+		lua_pop(L, 2);
 	}
 
     int type = lua_type(L, -1);

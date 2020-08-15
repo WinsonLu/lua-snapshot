@@ -183,7 +183,7 @@ static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* par
             traverse_function(L, dL, parent, link);
             break;
         case LUA_TTHREAD:
-            traverse_thread(L, dL, parent, link);
+            (L, dL, parent, link);
             break;
 		default:
             lua_pop(L, 1);
@@ -270,8 +270,8 @@ static void traverse_function(lua_State* L, lua_State* dL, struct lua_gc_node* p
         snprintf(buff, sizeof(buff), "(func: %s:%d)", ar.short_src, ar.linedefined);
         lua_pushstring(dL, buff);
         lua_rawsetp(dL, SOURCE, curr_node);
-		// 设置function节点的desc,主要包括定义的源文件名和行数
-		snprintf(curr_node->desc, sizeof(buff), buff, LUA_GC_NODE_DESC_SIZE);
+	// 设置function节点的desc,主要包括定义的源文件名和行数
+	snprintf(curr_node->desc, LUA_GC_NODE_DESC_SIZE, "%s", buff);
     }
 }
 
