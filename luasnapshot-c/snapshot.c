@@ -8,6 +8,7 @@ extern "C" {
 #include "lua_gc_node.h"
 #include "cJSON.h"
 #define SNAPSHOT_METATABLE "_snapshot_metatable_"
+#define lua_equal(L,idx1,idx2)		lua_compare(L,(idx1),(idx2),LUA_OPEQ)
 
 static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
 static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);

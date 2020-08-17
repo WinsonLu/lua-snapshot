@@ -17,6 +17,7 @@ pub const cJSON_StringIsConst: u32 = 512;
 pub const CJSON_NESTING_LIMIT: u32 = 1000;
 pub type size_t = ::std::os::raw::c_ulong;
 pub type wchar_t = ::std::os::raw::c_int;
+
 #[repr(C)]
 #[repr(align(16))]
 #[derive(Debug, Copy, Clone)]

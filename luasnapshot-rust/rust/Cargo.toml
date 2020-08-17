@@ -3,7 +3,6 @@ name = "snapshot"
 version = "0.1.0"
 authors = ["winsonyslu <winsonyslu@qq.com>"]
 edition = "2018"
-links = "libsnapshot1.so"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,6 +10,7 @@ links = "libsnapshot1.so"
 path = "src/lib.rs"
 crate-type = ["cdylib", "staticlib"]
 name = "snapshot"
+links = "libsnapshot1.a"
 
 [profile.dev]
 opt-level = 0

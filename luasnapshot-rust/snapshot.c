@@ -6,8 +6,9 @@ extern "C" {
 #include <lualib.h>
 #include <stdio.h>
 #include "lua_gc_node.h"
-//#include "cJSON.h"
+#include "cJSON.h"
 #define SNAPSHOT_METATABLE "_snapshot_metatable_"
+#define lua_equal(L,idx1,idx2)		lua_compare(L,(idx1),(idx2),LUA_OPEQ)
 
 static void traverse_object(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
 static void traverse_table(lua_State* L, lua_State* dL, struct lua_gc_node* parent, const char* link);
@@ -399,7 +400,6 @@ snapshot(lua_State *L) {
     return 1;
 }
 
-/*
 static int
 snapshot_printjson(lua_State* L, bool is_formatted) {
 	if (lua_gettop(L) != 1) {
@@ -425,9 +425,7 @@ snapshot_printjson(lua_State* L, bool is_formatted) {
 	cJSON_free(jsonstr);
 	return 0;
 }
-*/
 
-/*
 static int
 snapshot_print_jsonfmt(lua_State* L) {
 	return snapshot_printjson(L, true);
@@ -501,7 +499,6 @@ static int
 snapshot_tojsonfile_fmt(lua_State* L) {
 	return snapshot_tojsonfile(L, true);
 }
-*/
 
 static int
 snapshot_tofile(lua_State* L) {
@@ -590,8 +587,7 @@ snapshot_free(lua_State* L) {
 	}
 	luaL_getmetatable(L, SNAPSHOT_METATABLE);
 	lua_equal(L, -1, -2);
-	bool same = lua_toboolean(L, -1);
-	if (!same) {
+	if (!lua_toboolean(L, -1)) {
 		lua_pop(L, 3);
 		return 0;
 	}
@@ -615,8 +611,7 @@ snapshot_copy(lua_State* L) {
 	}
 	luaL_getmetatable(L, SNAPSHOT_METATABLE);
 	lua_equal(L, -1, -2);
-	bool same = lua_toboolean(L, -1);
-	if (!same) {
+	if (!lua_toboolean(L, -1)) {
 		luaL_error(L, "Argument is not a snapshot.");
 		lua_pushnil(L);
 		return 1;
@@ -679,11 +674,11 @@ static struct luaL_Reg
 snapshot_lib[] = {
 	{"snapshot", snapshot}, 						// 保存当前时刻的某一table或registry的快照，并返回一个snapshot(userdata)对象
 	{"print", snapshot_print}, 						// 转换为字符串，并打印
-	//{"print_jsonfmt", snapshot_print_jsonfmt}, 		// 转换为格式化过的json字符串，并打印
-	//{"print_json", snapshot_print_json_nofmt}, 		// 转换为未格式化过的json字符串, 并打印
+	{"print_jsonfmt", snapshot_print_jsonfmt}, 		// 转换为格式化过的json字符串，并打印
+	{"print_json", snapshot_print_json_nofmt}, 		// 转换为未格式化过的json字符串, 并打印
 	{"to_file", snapshot_tofile}, 					// 转换为字符串，并输出到指定文件
-	//{"to_jsonfile", snapshot_tojsonfile_nofmt}, 	// 转换为未格式化过的json字符串，并输出到指定文件
-	//{"to_jsonfilefmt", snapshot_tojsonfile_fmt}, 	// 转换为格式化过的json字符串，并输出到指定文件
+	{"to_jsonfile", snapshot_tojsonfile_nofmt}, 	// 转换为未格式化过的json字符串，并输出到指定文件
+	{"to_jsonfilefmt", snapshot_tojsonfile_fmt}, 	// 转换为格式化过的json字符串，并输出到指定文件
 	{"free", snapshot_free}, 						// 手动释放snapshot所占用的内存
 	{"copy", snapshot_copy}, 						// 复制snapshot	
 	{"incr", snapshot_increased}, 					// 求出snapshot1 到 snapshot2 的增量，返回类型仍为snapshot

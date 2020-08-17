@@ -8,7 +8,10 @@ fn main() {
         &mut builder,
         &get_files_with_postfix_in_dir("src/c", ".c").ok().unwrap(),
     );
-    builder.include("src/c").compile("libsnapshot1.a");
+    builder
+        .include("src/c")
+        .include("src/snapshot")
+        .compile("libsnapshot1.a");
 
     let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     println!("cargo:rustc-link-search={}", project_dir);
